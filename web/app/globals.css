@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --brand-blue: #3B82F6;
+    --brand-orange: #F97316;
+  }
+
+  body {
+    @apply bg-surface text-white antialiased;
+  }
+
+  * {
+    @apply border-gray-800;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl bg-surface-raised border border-gray-800 p-4;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-200 hover:border-brand-blue/50 hover:shadow-lg hover:shadow-brand-blue/10;
+  }
+
+  .btn-primary {
+    @apply rounded-lg bg-brand-blue px-4 py-2 font-semibold text-white transition-colors hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply rounded-lg border border-gray-700 bg-surface-overlay px-4 py-2 font-semibold text-gray-200 transition-colors hover:border-gray-500;
+  }
+
+  .btn-danger {
+    @apply rounded-lg bg-red-600 px-4 py-2 font-semibold text-white transition-colors hover:bg-red-700;
+  }
+
+  .rarity-common {
+    @apply border-rarity-common;
+  }
+  .rarity-rare {
+    @apply border-rarity-rare;
+  }
+  .rarity-epic {
+    @apply border-rarity-epic;
+  }
+  .rarity-legendary {
+    @apply border-rarity-legendary shadow-lg shadow-yellow-500/20;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand-blue to-brand-orange bg-clip-text text-transparent;
+  }
+}
