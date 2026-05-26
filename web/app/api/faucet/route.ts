@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Transaction } from '@mysten/sui/transactions';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0xcb4ae0641d8cdf704bf42e3254a3d8463256dd6e77fb005250af16702466ce48';
 const SPARK_TREASURY_CAP = '0x40bcb3ceb5f8e1e19f46388f418bccf108e5cd45b9761eec3f6aa0add9c1f45a';
 const RPC_URL = 'https://fullnode.testnet.sui.io:443';
+const FAUCET_AMOUNT = '500000000000';
 
 const claimed = new Set<string>();
 
-async function rpcCall(method: string, params: unknown[]) {
+async function rpc(method: string, params: unknown[]) {
   const res = await fetch(RPC_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -35,29 +33,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Already claimed. One starter pack per address.' }, { status: 400 });
     }
 
+    const { Ed25519Keypair } = await import('@mysten/sui/keypairs/ed25519');
+    const { decodeSuiPrivateKey } = await import('@mysten/sui/cryptography');
+    const { Transaction } = await import('@mysten/sui/transactions');
+
     const { secretKey } = decodeSuiPrivateKey(ADMIN_PRIVATE_KEY);
     const keypair = Ed25519Keypair.fromSecretKey(secretKey);
     const sender = keypair.getPublicKey().toSuiAddress();
 
     const tx = new Transaction();
     tx.setSender(sender);
-    tx.setGasOwner(sender);
 
     tx.moveCall({
       target: `${PACKAGE_ID}::spark_token::mint`,
       arguments: [
         tx.object(SPARK_TREASURY_CAP),
-        tx.pure.u64(500_000_000_000n),
+        tx.pure.u64(BigInt(FAUCET_AMOUNT)),
         tx.pure.address(address),
       ],
     });
 
-    const builtTx = await tx.build({ client: { getReferenceGasPrice: async () => 1000n, getCoins: async () => ({ data: [], nextCursor: null, hasNextPage: false }) } as never });
+    const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
+    const client = new SuiJsonRpcClient({ url: RPC_URL, network: 'testnet' });
 
-    const { signature } = await keypair.signTransaction(builtTx);
+    const bytes = await tx.build({ client });
+    const { signature } = await keypair.signTransaction(bytes);
 
-    const result = await rpcCall('sui_executeTransactionBlock', [
-      Buffer.from(builtTx).toString('base64'),
+    const result = await rpc('sui_executeTransactionBlock', [
+      Buffer.from(bytes).toString('base64'),
       [signature],
       { showEffects: true },
       'WaitForLocalExecution',
@@ -65,6 +68,11 @@ export async function POST(request: NextRequest) {
 
     if (result.error) {
       return NextResponse.json({ error: result.error.message }, { status: 500 });
+    }
+
+    const status = result.result?.effects?.status?.status;
+    if (status !== 'success') {
+      return NextResponse.json({ error: `Transaction failed: ${status}` }, { status: 500 });
     }
 
     claimed.add(address);
