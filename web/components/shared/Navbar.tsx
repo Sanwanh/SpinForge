@@ -4,20 +4,23 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import clsx from 'clsx';
 import { WalletButton } from './WalletButton';
+import { LocaleToggle } from './LocaleToggle';
+import { useT } from '@/lib/i18n';
 
-const NAV_LINKS = [
-  { href: '/', label: 'Home' },
-  { href: '/collection', label: 'Collection' },
-  { href: '/workshop', label: 'Workshop' },
-  { href: '/deck', label: 'Deck' },
-  { href: '/market', label: 'Market' },
-  { href: '/packs', label: 'Packs' },
-  { href: '/forge', label: 'Forge' },
-  { href: '/tournament', label: 'Tournament' },
+const NAV_KEYS = [
+  { href: '/', key: 'home' },
+  { href: '/collection', key: 'collection' },
+  { href: '/workshop', key: 'workshop' },
+  { href: '/deck', key: 'deck' },
+  { href: '/market', key: 'market' },
+  { href: '/packs', key: 'packs' },
+  { href: '/forge', key: 'forge' },
+  { href: '/tournament', key: 'tournament' },
 ] as const;
 
 export function Navbar() {
   const pathname = usePathname();
+  const t = useT();
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-800 bg-surface/80 backdrop-blur-lg">
@@ -30,7 +33,7 @@ export function Navbar() {
         </Link>
 
         <div className="hidden items-center gap-1 md:flex">
-          {NAV_LINKS.map((link) => (
+          {NAV_KEYS.map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -41,18 +44,20 @@ export function Navbar() {
                   : 'text-gray-400 hover:bg-surface-overlay hover:text-white'
               )}
             >
-              {link.label}
+              {t.nav[link.key]}
             </Link>
           ))}
         </div>
 
-        <WalletButton />
+        <div className="flex items-center gap-2">
+          <LocaleToggle />
+          <WalletButton />
+        </div>
       </nav>
 
-      {/* Mobile bottom tabs */}
       <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-800 bg-surface/90 backdrop-blur-lg md:hidden">
         <div className="flex justify-around py-2">
-          {NAV_LINKS.slice(0, 5).map((link) => (
+          {NAV_KEYS.slice(0, 5).map((link) => (
             <Link
               key={link.href}
               href={link.href}
@@ -61,7 +66,7 @@ export function Navbar() {
                 pathname === link.href ? 'text-brand-blue' : 'text-gray-500'
               )}
             >
-              {link.label}
+              {t.nav[link.key]}
             </Link>
           ))}
         </div>

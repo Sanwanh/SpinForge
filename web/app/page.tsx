@@ -1,19 +1,11 @@
 'use client';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useT } from '@/lib/i18n';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { RANKS, SPIRIT_BEASTS, ELEMENT_COLORS, type Element } from '@/lib/constants';
 import { SpiritBeastIcon } from '@/components/shared/SpiritBeastIcon';
-
-const QUICK_ACTIONS = [
-  { href: '/collection', label: 'Collection', desc: 'View your parts' },
-  { href: '/workshop', label: 'Workshop', desc: 'Assemble Beys' },
-  { href: '/deck', label: 'Deck Builder', desc: 'Build 3on3 deck' },
-  { href: '/packs', label: 'Open Packs', desc: 'Get new parts' },
-  { href: '/market', label: 'Marketplace', desc: 'Trade parts' },
-  { href: '/forge', label: 'Forge', desc: 'Evolve & fuse' },
-] as const;
 
 function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
   return (
@@ -26,6 +18,16 @@ function StatCard({ label, value, color }: { label: string; value: string; color
 
 export default function DashboardPage() {
   const { isAuthenticated, displayName } = useAuth();
+  const t = useT();
+
+  const quickActions = [
+    { href: '/collection', label: t.nav.collection, desc: t.home.viewParts },
+    { href: '/workshop', label: t.nav.workshop, desc: t.home.assembleBeys },
+    { href: '/deck', label: t.nav.deck, desc: t.home.buildDeck },
+    { href: '/packs', label: t.nav.packs, desc: t.home.getNewParts },
+    { href: '/market', label: t.nav.market, desc: t.home.tradeParts },
+    { href: '/forge', label: t.nav.forge, desc: t.home.evolveAndFuse },
+  ];
 
   if (!isAuthenticated) {
     return (
@@ -35,13 +37,9 @@ export default function DashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-4"
         >
-          <h1 className="text-5xl font-black text-gradient">SpinForge</h1>
-          <p className="text-lg text-gray-400">
-            Beyblade X Blockchain Card Game on Sui
-          </p>
-          <p className="text-sm text-gray-500">
-            Connect your wallet to start collecting, assembling, and battling
-          </p>
+          <h1 className="text-5xl font-black text-gradient">{t.home.title}</h1>
+          <p className="text-lg text-gray-400">{t.home.subtitle}</p>
+          <p className="text-sm text-gray-500">{t.home.connectPrompt}</p>
           <div className="flex justify-center gap-4 pt-4">
             {SPIRIT_BEASTS.slice(0, 4).map((beast) => (
               <SpiritBeastIcon key={beast.id} beastId={beast.id} size={48} />
@@ -55,25 +53,21 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-sm text-gray-400">
-          Welcome back, {displayName}
-        </p>
+        <h1 className="text-2xl font-bold text-white">{t.nav.home}</h1>
+        <p className="text-sm text-gray-400">{t.home.welcome}{displayName}</p>
       </motion.div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label="Rank" value={RANKS[1].name} color={RANKS[1].color} />
-        <StatCard label="Wins" value="12" color="#10B981" />
+        <StatCard label={t.home.rank} value={RANKS[1].name} color={RANKS[1].color} />
+        <StatCard label={t.home.wins} value="12" color="#10B981" />
         <StatCard label="SPARK" value="450" color="#F97316" />
-        <StatCard label="Parts" value="24" color="#3B82F6" />
+        <StatCard label={t.home.parts} value="24" color="#3B82F6" />
       </div>
 
-      {/* Quick Actions */}
       <div>
-        <h2 className="mb-4 text-lg font-bold text-white">Quick Actions</h2>
+        <h2 className="mb-4 text-lg font-bold text-white">{t.home.quickActions}</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          {QUICK_ACTIONS.map((action, i) => (
+          {quickActions.map((action, i) => (
             <motion.div
               key={action.href}
               initial={{ opacity: 0, y: 10 }}
@@ -89,13 +83,12 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Recent Matches */}
       <div>
-        <h2 className="mb-4 text-lg font-bold text-white">Recent Matches</h2>
+        <h2 className="mb-4 text-lg font-bold text-white">{t.home.recentMatches}</h2>
         <div className="card space-y-3">
-          <p className="text-sm text-gray-500">No recent matches. Start a battle to see your history here.</p>
+          <p className="text-sm text-gray-500">{t.home.noMatches}</p>
           <Link href="/tournament" className="btn-primary inline-block text-sm">
-            Find Match
+            {t.common.findMatch}
           </Link>
         </div>
       </div>

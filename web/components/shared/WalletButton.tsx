@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import { ConnectButton, useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
 import { useAuth } from '@/hooks/useAuth';
+import { useT } from '@/lib/i18n';
 import { beginZkLogin, isZkLoginConfigured } from '@/lib/zklogin';
 
 export function WalletButton() {
   const account = useCurrentAccount();
   const { mutate: disconnect } = useDisconnectWallet();
   const { isAuthenticated, authMethod, displayName, logout } = useAuth();
+  const t = useT();
   const [showMenu, setShowMenu] = useState(false);
   const [showLoginOptions, setShowLoginOptions] = useState(false);
 
@@ -45,7 +47,7 @@ export function WalletButton() {
                 }}
                 className="w-full rounded-md px-2 py-1.5 text-left text-sm text-red-400 transition-colors hover:bg-red-400/10"
               >
-                Sign Out
+                {t.common.signOut}
               </button>
             </div>
           </>
@@ -59,7 +61,7 @@ export function WalletButton() {
       <div className="relative">
         <div className="fixed inset-0 z-40" onClick={() => setShowLoginOptions(false)} />
         <div className="absolute right-0 top-0 z-50 w-56 rounded-lg border border-gray-700 bg-surface p-3 shadow-xl">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">Sign In</p>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">{t.common.signIn}</p>
 
           {isZkLoginConfigured() && (
             <button
@@ -104,7 +106,7 @@ export function WalletButton() {
       onClick={() => setShowLoginOptions(true)}
       className="rounded-lg border border-gray-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:border-brand-blue hover:bg-brand-blue/10"
     >
-      Sign In
+      {t.common.signIn}
     </button>
   );
 }
