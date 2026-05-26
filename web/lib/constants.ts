@@ -1,6 +1,7 @@
 // ---- Network ----
 export const SUI_NETWORK = 'testnet' as const;
-export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0xcb4ae0641d8cdf704bf42e3254a3d8463256dd6e77fb005250af16702466ce48';
+export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0xe2f6c1771f75ecdd9261bb10099dc42b5977e893e2beb0ca7eae3235a4f8994b';
+export const ORIGINAL_PACKAGE_ID = '0xcb4ae0641d8cdf704bf42e3254a3d8463256dd6e77fb005250af16702466ce48';
 
 // ---- Deployed Object IDs ----
 export const ADMIN_CAP_ID = '0x6aa381e305390071088b576812732f934722fd11951b702ee42d1c0e2c774078';
