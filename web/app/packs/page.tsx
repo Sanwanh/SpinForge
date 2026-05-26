@@ -2,12 +2,11 @@
 
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
-import { RARITY_LABELS, RARITY_BORDER_CLASSES, SPIRIT_BEASTS, ELEMENT_COLORS, PACKAGE_ID, type Rarity, type Element } from '@/lib/constants';
+import { useCurrentAccount } from '@mysten/dapp-kit';
+import { RARITY_BORDER_CLASSES, type Rarity } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
-import { useSparkBalance, useSparkCoins } from '@/hooks/useSparkBalance';
+import { useSparkBalance } from '@/hooks/useSparkBalance';
 import { useInventory } from '@/hooks/useInventory';
-import { openPack } from '@/lib/move-calls';
 
 interface RevealedPart {
   id: string;
@@ -19,10 +18,7 @@ interface RevealedPart {
 export default function PacksPage() {
   const account = useCurrentAccount();
   const t = useT();
-  const client = useSuiClient();
-  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
-  const { formatted: sparkBalance } = useSparkBalance();
-  const { primaryCoinId, refetch: refetchCoins } = useSparkCoins();
+  const { formatted: sparkBalance, refetch: refetchSpark } = useSparkBalance();
   const { refetch: refetchInventory } = useInventory();
   const [isOpening, setIsOpening] = useState(false);
   const [revealed, setRevealed] = useState<RevealedPart[]>([]);
@@ -30,10 +26,7 @@ export default function PacksPage() {
   const [error, setError] = useState<string | null>(null);
 
   const handleOpenPack = useCallback(async () => {
-    if (!primaryCoinId) {
-      setError('No SPARK tokens found. You need 100 SPARK to open a pack.');
-      return;
-    }
+    if (!account?.address) return;
 
     setIsOpening(true);
     setError(null);
@@ -41,54 +34,43 @@ export default function PacksPage() {
     setRevealIndex(-1);
 
     try {
-      const tx = openPack(primaryCoinId);
-      const result = await signAndExecute({ transaction: tx });
-
-      const txDetails = await client.waitForTransaction({
-        digest: result.digest,
-        options: { showObjectChanges: true },
+      const res = await fetch('/api/open-pack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: account.address }),
       });
+      const data = await res.json();
 
-      const newParts: RevealedPart[] = [];
-      for (const change of txDetails.objectChanges ?? []) {
-        if (change.type !== 'created') continue;
-        const objType = change.objectType ?? '';
-        if (!objType.includes(PACKAGE_ID)) continue;
-
-        let partType = 'Unknown';
-        if (objType.includes('::blade::Blade')) partType = 'Blade';
-        else if (objType.includes('::ratchet::Ratchet')) partType = 'Ratchet';
-        else if (objType.includes('::bit::Bit')) partType = 'Bit';
-        else continue;
-
-        const obj = await client.getObject({
-          id: change.objectId,
-          options: { showContent: true },
-        });
-        const fields = (obj.data?.content as { fields?: Record<string, unknown> })?.fields ?? {};
-        const name = (fields.name as string) ?? partType;
-        const rarity = RARITY_LABELS[fields.rarity as number] ?? 'Common';
-
-        newParts.push({ id: change.objectId, name, type: partType, rarity });
+      if (!res.ok) {
+        setError(data.error);
+        setIsOpening(false);
+        return;
       }
 
-      setRevealed(newParts.length > 0 ? newParts : [
-        { id: '?', name: 'Pack Opened!', type: 'Check Collection', rarity: 'Common' },
+      const parts: RevealedPart[] = (data.partIds ?? []).map((id: string, i: number) => ({
+        id,
+        name: `Part #${i + 1}`,
+        type: i < 2 ? 'Blade' : i < 4 ? 'Ratchet' : 'Bit',
+        rarity: 'Common',
+      }));
+
+      setRevealed(parts.length > 0 ? parts : [
+        { id: 'ok', name: data.message, type: '', rarity: 'Common' },
       ]);
 
-      for (let i = 0; i < newParts.length; i++) {
+      for (let i = 0; i < parts.length; i++) {
         await new Promise((r) => setTimeout(r, 500));
         setRevealIndex(i);
       }
 
-      refetchCoins();
+      refetchSpark();
       refetchInventory();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to open pack');
+    } catch {
+      setError('Network error. Please try again.');
     } finally {
       setIsOpening(false);
     }
-  }, [primaryCoinId, signAndExecute, client, refetchCoins, refetchInventory]);
+  }, [account, refetchSpark, refetchInventory]);
 
   const handleReset = useCallback(() => {
     setRevealed([]);
@@ -112,7 +94,7 @@ export default function PacksPage() {
           {t.packs.contains}. {t.packs.cost}: 100 SPARK
         </p>
         <p className="mt-1 text-sm text-brand-orange">
-          SPARK {t.home.rank === '段位' ? '餘額' : 'Balance'}: {sparkBalance}
+          SPARK: {sparkBalance}
         </p>
       </motion.div>
 
@@ -133,7 +115,7 @@ export default function PacksPage() {
             <div className="text-center">
               <div className="text-4xl font-black text-gradient">S</div>
               <p className="mt-2 text-xs text-gray-400">
-                {isOpening ? (t.common.loading) : 'Click to Open'}
+                {isOpening ? t.common.loading : 'Click to Open'}
               </p>
             </div>
           </motion.div>
