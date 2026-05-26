@@ -16,10 +16,12 @@
   "dependencies": {
     "@mysten/dapp-kit": "^1.0.6",
     "@mysten/sui": "^2.17.0",
+    "@mysten/zklogin": "^0.8.1",
     "@tanstack/react-query": "^5.100.14",
     "autoprefixer": "^10.5.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
+    "jose": "^6.2.3",
     "next": "^14.2.35",
     "pixi.js": "^7.4.3",
     "postcss": "^8.4.31",

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useAuth } from '@/hooks/useAuth';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { RANKS, SPIRIT_BEASTS, ELEMENT_COLORS, type Element } from '@/lib/constants';
@@ -25,9 +25,9 @@ function StatCard({ label, value, color }: { label: string; value: string; color
 }
 
 export default function DashboardPage() {
-  const account = useCurrentAccount();
+  const { isAuthenticated, displayName } = useAuth();
 
-  if (!account) {
+  if (!isAuthenticated) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6 text-center">
         <motion.div
@@ -57,7 +57,7 @@ export default function DashboardPage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
         <p className="text-sm text-gray-400">
-          Welcome back, {account.address.slice(0, 8)}...
+          Welcome back, {displayName}
         </p>
       </motion.div>
 
