@@ -1,5 +1,5 @@
 module spinforge::pack {
-    use sui::coin::{Self, Coin};
+    use sui::coin::{Self, Coin, TreasuryCap};
     use sui::random::{Self, Random};
     use sui::event;
     use spinforge::blade::{Self, Blade};
@@ -27,14 +27,14 @@ module spinforge::pack {
     /// Open a pack: costs 100 SPARK, generates 5 random parts.
     /// Distribution: 2 Blades, 2 Ratchets, 1 Bit (fixed for simplicity).
     /// Uses sui::random for on-chain randomness.
-    public fun open_pack(
+    entry fun open_pack(
         payment: Coin<SPARK_TOKEN>,
+        treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
         r: &Random,
         ctx: &mut TxContext,
-    ): (vector<Blade>, vector<Ratchet>, vector<Bit>) {
+    ) {
         assert!(coin::value(&payment) >= PACK_COST, EInsufficientPayment);
-        // Burn payment
-        transfer::public_transfer(payment, @0x0);
+        coin::burn(treasury_cap, payment);
 
         let mut gen = random::new_generator(r, ctx);
 
@@ -112,7 +112,19 @@ module spinforge::pack {
             bit_count: 1,
         });
 
-        (blades, ratchets, bits)
+        let sender = ctx.sender();
+        while (!vector::is_empty(&blades)) {
+            transfer::public_transfer(vector::pop_back(&mut blades), sender);
+        };
+        vector::destroy_empty(blades);
+        while (!vector::is_empty(&ratchets)) {
+            transfer::public_transfer(vector::pop_back(&mut ratchets), sender);
+        };
+        vector::destroy_empty(ratchets);
+        while (!vector::is_empty(&bits)) {
+            transfer::public_transfer(vector::pop_back(&mut bits), sender);
+        };
+        vector::destroy_empty(bits);
     }
 
     // ===== Rarity Roll =====

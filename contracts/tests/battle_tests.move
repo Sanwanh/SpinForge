@@ -3,6 +3,7 @@ module spinforge::battle_tests {
     use sui::test_scenario;
     use sui::clock;
     use spinforge::battle;
+    use spinforge::admin;
 
     const PLAYER_A: address = @0xA;
     const PLAYER_B: address = @0xB;
@@ -155,27 +156,25 @@ module spinforge::battle_tests {
         battle::commit_action(&mut round, PLAYER_A, &match_obj, b"hash_a");
         battle::commit_action(&mut round, PLAYER_B, &match_obj, b"hash_b");
 
-        // Resolve turn
+        let admin_cap = admin::create_admin_cap_for_testing(test_scenario::ctx(&mut scenario));
+
         battle::resolve_turn(
+            &admin_cap,
             &mut round,
-            0, 1,   // zones: A=Center, B=Mid
-            200, 100, // damage: A deals 200, B deals 100
-            50, 30,   // recoil
-            100, 100, // spin decay
-            50, 30,   // burst loss
+            200, 100,
+            50, 30,
+            100, 100,
+            50, 30,
         );
 
-        // AM: A = 10000 - 100(spin_decay) - 100(dmg_from_b) - 50(recoil) = 9750
         assert!(battle::round_am_a(&round) == 9750);
-        // AM: B = 10000 - 100(spin_decay) - 200(dmg_from_a) - 30(recoil) = 9670
         assert!(battle::round_am_b(&round) == 9670);
-        // BI: A = 500 - 50 = 450
         assert!(battle::round_bi_a(&round) == 450);
-        // BI: B = 500 - 30 = 470
         assert!(battle::round_bi_b(&round) == 470);
         assert!(battle::round_turn(&round) == 1);
-        assert!(battle::round_state(&round) == 0); // Back to COMMIT
+        assert!(battle::round_state(&round) == 0);
 
+        admin::destroy_admin_cap(admin_cap);
         battle::destroy_round(round);
         clock::destroy_for_testing(clk);
         battle::destroy_match(match_obj);
@@ -201,18 +200,19 @@ module spinforge::battle_tests {
             500, 500, 3, 3, &clk, ctx,
         );
 
-        // Commit + resolve to knock out B's AM
         battle::commit_action(&mut round, PLAYER_A, &match_obj, b"ha");
         battle::commit_action(&mut round, PLAYER_B, &match_obj, b"hb");
 
+        let admin_cap = admin::create_admin_cap_for_testing(test_scenario::ctx(&mut scenario));
         battle::resolve_turn(
+            &admin_cap,
             &mut round,
+            200, 0,
             0, 0,
-            200, 0,  // A deals 200 damage, B deals 0
-            0, 0,
-            0, 100,  // B loses 100 from decay = all AM gone
+            0, 100,
             0, 0,
         );
+        admin::destroy_admin_cap(admin_cap);
 
         let (is_over, finish_type, winner_is_a, points) = battle::check_win(&round, &match_obj);
         assert!(is_over == true);
@@ -249,12 +249,14 @@ module spinforge::battle_tests {
         battle::commit_action(&mut round, PLAYER_A, &match_obj, b"ha");
         battle::commit_action(&mut round, PLAYER_B, &match_obj, b"hb");
 
+        let admin_cap = admin::create_admin_cap_for_testing(test_scenario::ctx(&mut scenario));
         battle::resolve_turn(
+            &admin_cap,
             &mut round,
-            0, 0,
             0, 0, 0, 0, 0, 0,
-            0, 50, // B loses all burst integrity
+            0, 50,
         );
+        admin::destroy_admin_cap(admin_cap);
 
         let (is_over, finish_type, winner_is_a, points) = battle::check_win(&round, &match_obj);
         assert!(is_over == true);

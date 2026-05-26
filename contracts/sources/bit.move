@@ -35,7 +35,7 @@ module spinforge::bit {
 
     // ===== Constructor =====
 
-    public fun mint(
+    public(package) fun mint(
         name: String,
         category: u8,
         friction: u16,

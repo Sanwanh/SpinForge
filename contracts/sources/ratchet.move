@@ -32,7 +32,7 @@ module spinforge::ratchet {
 
     // ===== Constructor =====
 
-    public fun mint(
+    public(package) fun mint(
         prongs: u8,
         height: u8,
         weight: u16,

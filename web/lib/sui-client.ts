@@ -1,8 +1,13 @@
-import { getFullnodeUrl, SuiClient } from '@mysten/sui/client';
 import { SUI_NETWORK } from './constants';
 
-export function createSuiClient(): SuiClient {
-  return new SuiClient({ url: getFullnodeUrl(SUI_NETWORK) });
+const FULLNODE_URLS: Record<string, string> = {
+  testnet: 'https://fullnode.testnet.sui.io:443',
+  mainnet: 'https://fullnode.mainnet.sui.io:443',
+  devnet: 'https://fullnode.devnet.sui.io:443',
+};
+
+export function getFullnodeUrl(network: string): string {
+  return FULLNODE_URLS[network] ?? FULLNODE_URLS.testnet;
 }
 
-export const suiClient = createSuiClient();
+export const suiFullnodeUrl = getFullnodeUrl(SUI_NETWORK);

@@ -42,7 +42,7 @@ module spinforge::stadium {
 
     // ===== Constructor =====
 
-    public fun mint(
+    public(package) fun mint(
         name: String,
         rail_pattern: u8,
         rail_zones: vector<u8>,

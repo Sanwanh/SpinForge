@@ -1,6 +1,6 @@
 module spinforge::tournament {
     use sui::event;
-    use sui::coin::{Self, Coin};
+    use sui::coin::{Self, Coin, TreasuryCap};
     use spinforge::spark_token::SPARK_TOKEN;
 
     // ===== Error Codes =====
@@ -96,13 +96,13 @@ module spinforge::tournament {
     public fun register(
         tournament: &mut Tournament,
         payment: Coin<SPARK_TOKEN>,
+        treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
         ctx: &mut TxContext,
     ) {
         assert!(tournament.state == STATE_REGISTRATION, ETournamentNotStarted);
         assert!(vector::length(&tournament.players) < tournament.max_players, ETournamentFull);
 
         let player = ctx.sender();
-        // Check not already registered
         let mut i = 0;
         let len = vector::length(&tournament.players);
         while (i < len) {
@@ -110,11 +110,10 @@ module spinforge::tournament {
             i = i + 1;
         };
 
-        // Collect entry fee
         let fee = coin::value(&payment);
         assert!(fee >= tournament.entry_fee, EInvalidParticipant);
         tournament.prize_pool = tournament.prize_pool + fee;
-        transfer::public_transfer(payment, @0x0); // Burn to pool (simplified)
+        coin::burn(treasury_cap, payment);
 
         vector::push_back(&mut tournament.players, player);
 

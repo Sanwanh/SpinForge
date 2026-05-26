@@ -1,6 +1,8 @@
 module spinforge::battle {
     use sui::event;
     use sui::clock::Clock;
+    use sui::hash;
+    use spinforge::admin::AdminCap;
 
     // ===== Error Codes =====
     const ENotPlayer: u64 = 0;
@@ -248,16 +250,38 @@ module spinforge::battle {
         };
     }
 
+    // ===== Reveal =====
+
+    public fun reveal_action(
+        round: &mut Round,
+        player: address,
+        match_obj: &Match,
+        zone: u8,
+        salt: vector<u8>,
+    ) {
+        assert!(round.state == ROUND_REVEAL, EInvalidState);
+
+        let mut preimage = vector::empty<u8>();
+        vector::push_back(&mut preimage, zone);
+        vector::append(&mut preimage, salt);
+        let hash = hash::keccak256(&preimage);
+
+        if (player == match_obj.player_a) {
+            assert!(round.commit_a == hash, ERevealMismatch);
+            round.zone_a = zone;
+        } else if (player == match_obj.player_b) {
+            assert!(round.commit_b == hash, ERevealMismatch);
+            round.zone_b = zone;
+        } else {
+            abort ENotPlayer
+        };
+    }
+
     // ===== Turn Resolution =====
 
-    /// Resolve a turn given revealed actions.
-    /// zone_a, zone_b: target zones (0=Center, 1=Mid, 2=Wall, 3=Rail)
-    /// damage_a_to_b, damage_b_to_a: pre-computed damage values
-    /// recoil_a, recoil_b: self-damage values
     public fun resolve_turn(
+        _admin: &AdminCap,
         round: &mut Round,
-        zone_a: u8,
-        zone_b: u8,
         damage_a_to_b: u64,
         damage_b_to_a: u64,
         recoil_a: u64,
@@ -268,10 +292,6 @@ module spinforge::battle {
         burst_loss_b: u64,
     ) {
         assert!(round.state == ROUND_REVEAL, EInvalidState);
-
-        // Update zones
-        round.zone_a = zone_a;
-        round.zone_b = zone_b;
 
         // Apply spin decay
         round.am_a = if (round.am_a > spin_decay_a) {
@@ -401,6 +421,29 @@ module spinforge::battle {
         } else {
             match_obj.state = STATE_BEY_SELECT;
             false
+        }
+    }
+
+    // ===== Timeout =====
+
+    public fun claim_timeout(
+        round: &Round,
+        match_obj: &Match,
+        clock: &Clock,
+    ): (bool, bool) {
+        assert!(round.state == ROUND_COMMIT, EInvalidState);
+        assert!(sui::clock::timestamp_ms(clock) > round.deadline, EDeadlineNotReached);
+
+        let a_committed = !vector::is_empty(&round.commit_a);
+        let b_committed = !vector::is_empty(&round.commit_b);
+        let _ = match_obj;
+
+        if (a_committed && !b_committed) {
+            (true, true)
+        } else if (!a_committed && b_committed) {
+            (true, false)
+        } else {
+            (false, true)
         }
     }
 

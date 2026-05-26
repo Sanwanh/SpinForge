@@ -43,7 +43,7 @@ module spinforge::blade {
 
     // ===== Constructor =====
 
-    public fun mint(
+    public(package) fun mint(
         name: String,
         spirit_beast: u8,
         bey_type: u8,
@@ -96,8 +96,12 @@ module spinforge::blade {
         else { 4 }
     }
 
-    public fun add_xp(blade: &mut Blade, amount: u32) {
+    public(package) fun add_xp(blade: &mut Blade, amount: u32) {
         blade.xp = blade.xp + amount;
+    }
+
+    public(package) fun set_attack(blade: &mut Blade, new_attack: u16) {
+        blade.attack = new_attack;
     }
 
     // ===== Getters =====

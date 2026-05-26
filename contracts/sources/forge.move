@@ -1,5 +1,5 @@
 module spinforge::forge {
-    use sui::coin::{Self, Coin};
+    use sui::coin::{Self, Coin, TreasuryCap};
     use sui::event;
     use spinforge::blade::{Self, Blade};
     use spinforge::ratchet::{Self, Ratchet};
@@ -61,6 +61,7 @@ module spinforge::forge {
         blade_b: Blade,
         blade_c: Blade,
         payment: Coin<SPARK_TOKEN>,
+        treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
         ctx: &mut TxContext,
     ): Blade {
         assert!(coin::value(&payment) >= EVOLUTION_COST, EInsufficientSpark);
@@ -72,13 +73,11 @@ module spinforge::forge {
         let new_attack = if (base_attack + 15 > 100) { 100 } else { base_attack + 15 };
         let new_recoil = blade::recoil_factor(&blade_a);
 
-        // Burn inputs
         blade::destroy(blade_a);
         blade::destroy(blade_b);
         blade::destroy(blade_c);
 
-        // Burn payment
-        transfer::public_transfer(payment, @0x0);
+        coin::burn(treasury_cap, payment);
 
         let new_blade = blade::mint(
             std::string::utf8(b"Evolved Blade"),
@@ -104,6 +103,7 @@ module spinforge::forge {
         ratchet_b: Ratchet,
         ratchet_c: Ratchet,
         payment: Coin<SPARK_TOKEN>,
+        treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
         ctx: &mut TxContext,
     ): Ratchet {
         assert!(coin::value(&payment) >= EVOLUTION_COST, EInsufficientSpark);
@@ -111,18 +111,19 @@ module spinforge::forge {
         assert!(ratchet::rarity(&ratchet_b) == RARITY_COMMON, EInvalidRarityForEvolution);
         assert!(ratchet::rarity(&ratchet_c) == RARITY_COMMON, EInvalidRarityForEvolution);
 
-        // Read stats before destroying
         let base_weight = ratchet::weight(&ratchet_a);
         let new_weight = base_weight + 20;
         let base_burst = ratchet::burst_resistance(&ratchet_a);
+        let base_prongs = ratchet::prongs(&ratchet_a);
+        let base_height = ratchet::height(&ratchet_a);
 
         ratchet::destroy(ratchet_a);
         ratchet::destroy(ratchet_b);
         ratchet::destroy(ratchet_c);
-        transfer::public_transfer(payment, @0x0);
+        coin::burn(treasury_cap, payment);
 
         let new_ratchet = ratchet::mint(
-            3, 60, new_weight,
+            base_prongs, base_height, new_weight,
             base_burst,
             RARITY_RARE,
             ctx,
@@ -143,6 +144,7 @@ module spinforge::forge {
         bit_b: Bit,
         bit_c: Bit,
         payment: Coin<SPARK_TOKEN>,
+        treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
         ctx: &mut TxContext,
     ): Bit {
         assert!(coin::value(&payment) >= EVOLUTION_COST, EInsufficientSpark);
@@ -152,19 +154,23 @@ module spinforge::forge {
 
         let base_friction = bit::friction(&bit_a);
         let new_friction = if (base_friction > 5) { base_friction - 5 } else { 2 };
+        let base_category = bit::category(&bit_a);
+        let base_mobility = bit::mobility(&bit_a);
+        let base_gear = bit::gear_diameter(&bit_a);
+        let base_lad = bit::has_life_after_death(&bit_a);
 
         bit::destroy(bit_a);
         bit::destroy(bit_b);
         bit::destroy(bit_c);
-        transfer::public_transfer(payment, @0x0);
+        coin::burn(treasury_cap, payment);
 
         let new_bit = bit::mint(
             std::string::utf8(b"Evolved Bit"),
-            0,
+            base_category,
             new_friction,
-            3,
-            0,
-            false,
+            base_mobility,
+            base_gear,
+            base_lad,
             RARITY_RARE,
             ctx,
         );
@@ -185,6 +191,7 @@ module spinforge::forge {
         blade_a: Blade,
         blade_b: Blade,
         payment: Coin<SPARK_TOKEN>,
+        treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
         ctx: &mut TxContext,
     ): Blade {
         assert!(coin::value(&payment) >= FUSION_COST, EInsufficientSpark);
@@ -200,13 +207,17 @@ module spinforge::forge {
         let recoil_b = blade::recoil_factor(&blade_b);
         let best_recoil = if (recoil_a < recoil_b) { recoil_a } else { recoil_b };
 
+        let base_spirit = blade::spirit_beast(&blade_a);
+        let base_type = blade::bey_type(&blade_a);
+        let base_spin = blade::spin_direction(&blade_a);
+
         blade::destroy(blade_a);
         blade::destroy(blade_b);
-        transfer::public_transfer(payment, @0x0);
+        coin::burn(treasury_cap, payment);
 
         let new_blade = blade::mint(
             std::string::utf8(b"Fused Blade"),
-            0, 0, 0,
+            base_spirit, base_type, base_spin,
             new_attack,
             best_recoil,
             RARITY_EPIC,
@@ -229,16 +240,14 @@ module spinforge::forge {
         blade: &mut Blade,
         new_attack: u16,
         payment: Coin<SPARK_TOKEN>,
+        treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
         ctx: &mut TxContext,
     ) {
         assert!(coin::value(&payment) >= RETUNE_COST, EInsufficientSpark);
         assert!(new_attack >= 10 && new_attack <= 100, EInvalidPartType);
 
-        transfer::public_transfer(payment, @0x0);
-
-        // Emit event (actual stat mutation requires friend/package access)
-        let _ = blade;
-        let _ = new_attack;
+        coin::burn(treasury_cap, payment);
+        blade::set_attack(blade, new_attack);
 
         event::emit(BladeRetuned {
             blade_id: blade::id(blade),
