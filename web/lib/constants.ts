@@ -2,6 +2,15 @@
 export const SUI_NETWORK = 'testnet' as const;
 export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0xcb4ae0641d8cdf704bf42e3254a3d8463256dd6e77fb005250af16702466ce48';
 
+// ---- Deployed Object IDs ----
+export const ADMIN_CAP_ID = '0x6aa381e305390071088b576812732f934722fd11951b702ee42d1c0e2c774078';
+export const GAME_CONFIG_ID = '0x8817f5c6419ef94db9f3b0655c8f219f3c28d3b8f4c0e22f305bfafa5f7d1e45';
+export const SPARK_TREASURY_CAP_ID = '0x40bcb3ceb5f8e1e19f46388f418bccf108e5cd45b9761eec3f6aa0add9c1f45a';
+export const FORGE_TREASURY_CAP_ID = '0xd7460f080363a217383d60c9361f08ff6a10175c8a5ebbf1338508d921bdccd2';
+export const TRANSFER_POLICY_ID = '0x5246d426451a76b966bf54902da9682879346277a6969f69c08552765c72ab6c';
+export const SUI_RANDOM_ID = '0x8';
+export const SPARK_TYPE = `${PACKAGE_ID}::spark_token::SPARK_TOKEN`;
+
 // ---- Spirit Beasts ----
 export const SPIRIT_BEASTS = [
   { id: 0, name: 'Azure Dragon', chinese: 'Seiryu', element: 'Wood', direction: 'East', season: 'Spring' },

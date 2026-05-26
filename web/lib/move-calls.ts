@@ -1,19 +1,45 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { PACKAGE_ID } from './constants';
+import {
+  PACKAGE_ID,
+  SPARK_TREASURY_CAP_ID,
+  SPARK_TYPE,
+  SUI_RANDOM_ID,
+} from './constants';
 
-/**
- * Move transaction builders for all contract interactions.
- * Each function returns a Transaction that can be signed and executed.
- */
+const SPARK_COIN_TYPE = `0x2::coin::Coin<${SPARK_TYPE}>`;
+
+function splitSparkPayment(tx: Transaction, sparkCoinId: string, amount: bigint) {
+  const [payment] = tx.splitCoins(tx.object(sparkCoinId), [amount]);
+  return payment;
+}
+
+// ===== Pack Opening =====
+
+export function openPack(sparkCoinId: string): Transaction {
+  const tx = new Transaction();
+  const payment = splitSparkPayment(tx, sparkCoinId, 100_000_000_000n);
+  tx.moveCall({
+    target: `${PACKAGE_ID}::pack::open_pack`,
+    arguments: [
+      payment,
+      tx.object(SPARK_TREASURY_CAP_ID),
+      tx.object(SUI_RANDOM_ID),
+    ],
+  });
+  return tx;
+}
+
+// ===== Assembly =====
 
 export function assembleBey(
   bladeId: string,
   ratchetId: string,
   bitId: string,
-  name: string
+  name: string,
+  sender: string,
 ): Transaction {
   const tx = new Transaction();
-  tx.moveCall({
+  const [bey] = tx.moveCall({
     target: `${PACKAGE_ID}::bey::assemble`,
     arguments: [
       tx.object(bladeId),
@@ -22,6 +48,7 @@ export function assembleBey(
       tx.pure.string(name),
     ],
   });
+  tx.transferObjects([bey], sender);
   return tx;
 }
 
@@ -34,14 +61,165 @@ export function disassembleBey(beyId: string): Transaction {
   return tx;
 }
 
-export function createDeck(
-  bey1Id: string,
-  bey2Id: string,
-  bey3Id: string
+// ===== Forge =====
+
+export function evolveBlades(
+  blade1Id: string,
+  blade2Id: string,
+  blade3Id: string,
+  sparkCoinId: string,
+): Transaction {
+  const tx = new Transaction();
+  const payment = splitSparkPayment(tx, sparkCoinId, 50_000_000_000n);
+  const newBlade = tx.moveCall({
+    target: `${PACKAGE_ID}::forge::evolve_blades`,
+    arguments: [
+      tx.object(blade1Id),
+      tx.object(blade2Id),
+      tx.object(blade3Id),
+      payment,
+      tx.object(SPARK_TREASURY_CAP_ID),
+    ],
+  });
+  // Returned object auto-transfers to sender via Sui PTB rules
+  return tx;
+}
+
+export function evolveRatchets(
+  r1Id: string,
+  r2Id: string,
+  r3Id: string,
+  sparkCoinId: string,
+): Transaction {
+  const tx = new Transaction();
+  const payment = splitSparkPayment(tx, sparkCoinId, 50_000_000_000n);
+  const newRatchet = tx.moveCall({
+    target: `${PACKAGE_ID}::forge::evolve_ratchets`,
+    arguments: [
+      tx.object(r1Id),
+      tx.object(r2Id),
+      tx.object(r3Id),
+      payment,
+      tx.object(SPARK_TREASURY_CAP_ID),
+    ],
+  });
+  // Returned object auto-transfers to sender via Sui PTB rules
+  return tx;
+}
+
+export function evolveBits(
+  b1Id: string,
+  b2Id: string,
+  b3Id: string,
+  sparkCoinId: string,
+): Transaction {
+  const tx = new Transaction();
+  const payment = splitSparkPayment(tx, sparkCoinId, 50_000_000_000n);
+  const newBit = tx.moveCall({
+    target: `${PACKAGE_ID}::forge::evolve_bits`,
+    arguments: [
+      tx.object(b1Id),
+      tx.object(b2Id),
+      tx.object(b3Id),
+      payment,
+      tx.object(SPARK_TREASURY_CAP_ID),
+    ],
+  });
+  // Returned object auto-transfers to sender via Sui PTB rules
+  return tx;
+}
+
+export function fuseBlades(
+  blade1Id: string,
+  blade2Id: string,
+  sparkCoinId: string,
+): Transaction {
+  const tx = new Transaction();
+  const payment = splitSparkPayment(tx, sparkCoinId, 200_000_000_000n);
+  const newBlade = tx.moveCall({
+    target: `${PACKAGE_ID}::forge::fuse_blades`,
+    arguments: [
+      tx.object(blade1Id),
+      tx.object(blade2Id),
+      payment,
+      tx.object(SPARK_TREASURY_CAP_ID),
+    ],
+  });
+  // Returned object auto-transfers to sender via Sui PTB rules
+  return tx;
+}
+
+export function retuneBlade(
+  bladeId: string,
+  newAttack: number,
+  sparkCoinId: string,
+): Transaction {
+  const tx = new Transaction();
+  const payment = splitSparkPayment(tx, sparkCoinId, 75_000_000_000n);
+  tx.moveCall({
+    target: `${PACKAGE_ID}::forge::retune_blade_attack`,
+    arguments: [
+      tx.object(bladeId),
+      tx.pure.u16(newAttack),
+      payment,
+      tx.object(SPARK_TREASURY_CAP_ID),
+    ],
+  });
+  return tx;
+}
+
+// ===== Battle =====
+
+export function commitAction(
+  roundId: string,
+  playerAddress: string,
+  matchId: string,
+  commitment: Uint8Array,
 ): Transaction {
   const tx = new Transaction();
   tx.moveCall({
-    target: `${PACKAGE_ID}::deck::create`,
+    target: `${PACKAGE_ID}::battle::commit_action`,
+    arguments: [
+      tx.object(roundId),
+      tx.pure.address(playerAddress),
+      tx.object(matchId),
+      tx.pure.vector('u8', Array.from(commitment)),
+    ],
+  });
+  return tx;
+}
+
+export function revealAction(
+  roundId: string,
+  playerAddress: string,
+  matchId: string,
+  zone: number,
+  salt: Uint8Array,
+): Transaction {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${PACKAGE_ID}::battle::reveal_action`,
+    arguments: [
+      tx.object(roundId),
+      tx.pure.address(playerAddress),
+      tx.object(matchId),
+      tx.pure.u8(zone),
+      tx.pure.vector('u8', Array.from(salt)),
+    ],
+  });
+  return tx;
+}
+
+// ===== Deck =====
+
+export function validateDeck(
+  bey1Id: string,
+  bey2Id: string,
+  bey3Id: string,
+): Transaction {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${PACKAGE_ID}::deck::validate_deck`,
     arguments: [
       tx.object(bey1Id),
       tx.object(bey2Id),
@@ -51,150 +229,14 @@ export function createDeck(
   return tx;
 }
 
-export function openPack(packId: string, randomId: string): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::pack::open`,
-    arguments: [tx.object(packId), tx.object(randomId)],
-  });
-  return tx;
-}
+// ===== Query Helpers =====
 
-export function buyPack(
-  paymentCoinId: string,
-  shopId: string
-): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::pack::buy`,
-    arguments: [tx.object(paymentCoinId), tx.object(shopId)],
-  });
-  return tx;
-}
-
-export function evolve(
-  part1Id: string,
-  part2Id: string,
-  part3Id: string,
-  sparkCoinId: string
-): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::forge::evolve`,
-    arguments: [
-      tx.object(part1Id),
-      tx.object(part2Id),
-      tx.object(part3Id),
-      tx.object(sparkCoinId),
-    ],
-  });
-  return tx;
-}
-
-export function fuse(
-  part1Id: string,
-  part2Id: string,
-  sparkCoinId: string
-): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::forge::fuse`,
-    arguments: [
-      tx.object(part1Id),
-      tx.object(part2Id),
-      tx.object(sparkCoinId),
-    ],
-  });
-  return tx;
-}
-
-export function retune(
-  partId: string,
-  statIndex: number,
-  sparkCoinId: string,
-  randomId: string
-): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::forge::retune`,
-    arguments: [
-      tx.object(partId),
-      tx.pure.u8(statIndex),
-      tx.object(sparkCoinId),
-      tx.object(randomId),
-    ],
-  });
-  return tx;
-}
-
-export function commitZone(
-  matchId: string,
-  roundId: string,
-  commitHash: string
-): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::battle::commit_zone`,
-    arguments: [
-      tx.object(matchId),
-      tx.object(roundId),
-      tx.pure.vector('u8', Array.from(Buffer.from(commitHash, 'hex'))),
-    ],
-  });
-  return tx;
-}
-
-export function revealZone(
-  matchId: string,
-  roundId: string,
-  zone: number,
-  nonce: string
-): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::battle::reveal_zone`,
-    arguments: [
-      tx.object(matchId),
-      tx.object(roundId),
-      tx.pure.u8(zone),
-      tx.pure.vector('u8', Array.from(Buffer.from(nonce, 'hex'))),
-    ],
-  });
-  return tx;
-}
-
-export function listOnMarket(
-  kioskId: string,
-  partId: string,
-  price: bigint
-): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::marketplace::list`,
-    arguments: [
-      tx.object(kioskId),
-      tx.object(partId),
-      tx.pure.u64(price),
-    ],
-  });
-  return tx;
-}
-
-export function buyFromMarket(
-  kioskId: string,
-  partId: string,
-  paymentCoinId: string,
-  policyId: string
-): Transaction {
-  const tx = new Transaction();
-  tx.moveCall({
-    target: `${PACKAGE_ID}::marketplace::buy`,
-    arguments: [
-      tx.object(kioskId),
-      tx.object(partId),
-      tx.object(paymentCoinId),
-      tx.object(policyId),
-    ],
-  });
-  return tx;
-}
+export const OBJECT_TYPES = {
+  blade: `${PACKAGE_ID}::blade::Blade`,
+  ratchet: `${PACKAGE_ID}::ratchet::Ratchet`,
+  bit: `${PACKAGE_ID}::bit::Bit`,
+  bey: `${PACKAGE_ID}::bey::Bey`,
+  stadium: `${PACKAGE_ID}::stadium::Stadium`,
+  spiritAvatar: `${PACKAGE_ID}::spirit::SpiritAvatar`,
+  sparkCoin: SPARK_COIN_TYPE,
+} as const;

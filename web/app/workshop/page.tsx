@@ -66,7 +66,7 @@ export default function WorkshopPage() {
 
   const handleAssemble = useCallback(async () => {
     if (!selectedBlade || !selectedRatchet || !selectedBit || !beyName.trim()) return;
-    const tx = assembleBey(selectedBlade.objectId, selectedRatchet.objectId, selectedBit.objectId, beyName.trim());
+    const tx = assembleBey(selectedBlade.objectId, selectedRatchet.objectId, selectedBit.objectId, beyName.trim(), account?.address ?? '');
     await signAndExecute({ transaction: tx });
     setSelectedBlade(null);
     setSelectedRatchet(null);
