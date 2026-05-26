@@ -5,15 +5,17 @@ import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useDeck } from '@/hooks/useDeck';
 import { DeckBuilder } from '@/components/deck/DeckBuilder';
 import { DuplicateWarning } from '@/components/deck/DuplicateWarning';
+import { useT } from '@/lib/i18n';
 
 export default function DeckPage() {
   const account = useCurrentAccount();
   const { beys, techniques, hasDuplicates, setBey, setTechniques, clear } = useDeck();
+  const t = useT();
 
   if (!account) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">Connect your wallet to build your deck.</p>
+        <p className="text-gray-500">{t.deck.connectPrompt}</p>
       </div>
     );
   }
@@ -25,8 +27,8 @@ export default function DeckPage() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">Deck Builder</h1>
-            <p className="text-sm text-gray-400">Build your 3on3 deck: 3 Beys + 12 Technique cards</p>
+            <h1 className="text-2xl font-bold text-white">{t.deck.title}</h1>
+            <p className="text-sm text-gray-400">{t.deck.subtitle}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={clear} className="btn-secondary text-sm">Clear All</button>
@@ -34,7 +36,7 @@ export default function DeckPage() {
               disabled={!isComplete || hasDuplicates}
               className="btn-primary text-sm"
             >
-              Save Deck
+              {t.deck.save}
             </button>
           </div>
         </div>

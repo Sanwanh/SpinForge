@@ -1,12 +1,14 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import { useT } from '@/lib/i18n';
 
 interface DuplicateWarningProps {
   show: boolean;
 }
 
 export function DuplicateWarning({ show }: DuplicateWarningProps) {
+  const t = useT();
   return (
     <AnimatePresence>
       {show && (
@@ -18,7 +20,7 @@ export function DuplicateWarning({ show }: DuplicateWarningProps) {
           role="alert"
         >
           <p className="text-sm font-medium text-red-400">
-            Duplicate parts detected! WBBA rules prohibit using the same part across multiple Beys in your deck.
+            {t.deck.duplicateWarning}
           </p>
         </motion.div>
       )}

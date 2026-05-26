@@ -5,6 +5,7 @@ import { motion } from 'framer-motion';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { ListingCard } from '@/components/market/ListingCard';
 import { BuyModal } from '@/components/market/BuyModal';
+import { useT } from '@/lib/i18n';
 
 interface MockListing {
   objectId: string;
@@ -27,12 +28,13 @@ const MOCK_LISTINGS: MockListing[] = [
 export default function MarketPage() {
   const account = useCurrentAccount();
   const [selectedListing, setSelectedListing] = useState<MockListing | null>(null);
+  const t = useT();
 
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">Marketplace</h1>
-        <p className="text-sm text-gray-400">Buy and sell parts on the Kiosk marketplace</p>
+        <h1 className="text-2xl font-bold text-white">{t.market.title}</h1>
+        <p className="text-sm text-gray-400">{t.market.subtitle}</p>
       </motion.div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

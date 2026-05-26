@@ -13,6 +13,7 @@ import {
   type Element,
 } from '@/lib/constants';
 import { SpiritBeastIcon } from '@/components/shared/SpiritBeastIcon';
+import { useT } from '@/lib/i18n';
 
 export interface PartCardData {
   objectId: string;
@@ -98,11 +99,14 @@ function StatLine({ label, value, max, color }: { label: string; value: number; 
   );
 }
 
-const TYPE_LABELS: Record<string, string> = { blade: 'Blade', ratchet: 'Ratchet', bit: 'Bit' };
+const TYPE_KEYS: Record<string, 'blade' | 'ratchet' | 'bit'> = { blade: 'blade', ratchet: 'ratchet', bit: 'bit' };
 
 export function PartCard({ part, selected = false, onClick }: PartCardProps) {
+  const t = useT();
   const rarity = RARITY_LABELS[part.rarity] ?? ('Common' as Rarity);
   const borderClass = RARITY_BORDER_CLASSES[rarity];
+  const rarityKey = rarity.toLowerCase() as keyof typeof t.rarities;
+  const translatedRarity = t.rarities[rarityKey];
 
   const element = part.type === 'blade'
     ? SPIRIT_BEASTS[Number(part.fields.spirit_beast ?? 0)]?.element as Element | undefined
@@ -124,8 +128,8 @@ export function PartCard({ part, selected = false, onClick }: PartCardProps) {
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold text-white">{part.name || `${TYPE_LABELS[part.type]} #${part.objectId.slice(-4)}`}</h3>
-          <span className="text-xs uppercase tracking-wider text-gray-500">{TYPE_LABELS[part.type]}</span>
+          <h3 className="text-sm font-bold text-white">{part.name || `${t.workshop[TYPE_KEYS[part.type]]} #${part.objectId.slice(-4)}`}</h3>
+          <span className="text-xs uppercase tracking-wider text-gray-500">{t.workshop[TYPE_KEYS[part.type]]}</span>
         </div>
         <span
           className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
@@ -134,7 +138,7 @@ export function PartCard({ part, selected = false, onClick }: PartCardProps) {
             backgroundColor: `${elementColor ?? '#9CA3AF'}20`,
           }}
         >
-          {rarity}
+          {translatedRarity}
         </span>
       </div>
 

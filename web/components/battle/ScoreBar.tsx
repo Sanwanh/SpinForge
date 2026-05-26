@@ -2,6 +2,7 @@
 
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useT } from '@/lib/i18n';
 
 interface ScoreBarProps {
   scoreA: number;
@@ -18,6 +19,7 @@ export function ScoreBar({
   playerBName,
   target = 7,
 }: ScoreBarProps) {
+  const t = useT();
   return (
     <div className="flex items-center justify-between rounded-xl bg-surface-raised px-6 py-3">
       {/* Player A */}
@@ -37,7 +39,7 @@ export function ScoreBar({
 
       {/* Divider */}
       <div className="flex flex-col items-center gap-0.5">
-        <span className="text-xs text-gray-600 uppercase tracking-widest">vs</span>
+        <span className="text-xs text-gray-600 uppercase tracking-widest">{t.battle.vs}</span>
         <span className="text-[10px] text-gray-700">First to {target}</span>
       </div>
 

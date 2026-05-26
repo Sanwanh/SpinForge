@@ -9,6 +9,7 @@ import { ZoneSelector } from '@/components/battle/ZoneSelector';
 import { PhysicsHUD } from '@/components/battle/PhysicsHUD';
 import { TechniqueHand, type TechniqueCard } from '@/components/battle/TechniqueHand';
 import type { Zone } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 
 const StadiumCanvas = dynamic(
   () => import('@/components/battle/StadiumCanvas').then((m) => m.StadiumCanvas),
@@ -24,6 +25,7 @@ const MOCK_TECHNIQUES: TechniqueCard[] = [
 export default function BattlePage({ params }: { params: { id: string } }) {
   const battle = useBattle();
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+  const t = useT();
 
   return (
     <div className="space-y-4">
@@ -78,7 +80,7 @@ export default function BattlePage({ params }: { params: { id: string } }) {
 
       {/* Technique hand */}
       <div>
-        <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">Technique Cards</h3>
+        <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">{t.deck.techniques}</h3>
         <TechniqueHand
           cards={MOCK_TECHNIQUES}
           onPlay={(id) => battle.addLog(`Played technique ${id}`)}

@@ -2,6 +2,7 @@
 
 import clsx from 'clsx';
 import { motion } from 'framer-motion';
+import { useT } from '@/lib/i18n';
 
 interface PhysicsHUDProps {
   angularMomentum: number;
@@ -62,12 +63,13 @@ export function PhysicsHUD({
   isDeathSpin = false,
   side,
 }: PhysicsHUDProps) {
+  const t = useT();
   const amPct = maxAM > 0 ? (angularMomentum / maxAM) * 100 : 0;
 
   return (
     <div className={clsx('w-full space-y-3 rounded-xl bg-surface-raised p-4', side === 'right' && 'text-right')}>
       <StatBar
-        label="Angular Momentum"
+        label={t.battle.angularMomentum}
         value={angularMomentum}
         max={maxAM}
         color={amPct < 20 ? '#EF4444' : '#3B82F6'}
@@ -75,7 +77,7 @@ export function PhysicsHUD({
       />
 
       <StatBar
-        label="Burst Integrity"
+        label={t.battle.burstIntegrity}
         value={burstIntegrity}
         max={maxBI}
         color={burstIntegrity < maxBI * 0.3 ? '#F97316' : '#A855F7'}
@@ -92,7 +94,7 @@ export function PhysicsHUD({
 
       {isDeathSpin && (
         <div className="rounded-lg bg-red-500/10 px-2 py-1 text-center text-xs font-bold text-red-400">
-          DEATH SPIN - Wobble Active
+          {t.battle.deathSpin}
         </div>
       )}
     </div>

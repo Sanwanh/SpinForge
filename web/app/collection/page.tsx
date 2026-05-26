@@ -5,10 +5,12 @@ import { useInventory } from '@/hooks/useInventory';
 import { PartGrid } from '@/components/collection/PartGrid';
 import type { PartCardData } from '@/components/collection/PartCard';
 import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useT } from '@/lib/i18n';
 
 export default function CollectionPage() {
   const account = useCurrentAccount();
   const { blades, ratchets, bits, isLoading } = useInventory();
+  const t = useT();
 
   const allParts: PartCardData[] = [
     ...blades.map((b) => ({
@@ -37,7 +39,7 @@ export default function CollectionPage() {
   if (!account) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">Connect your wallet to view your collection.</p>
+        <p className="text-gray-500">{t.collection.connectPrompt}</p>
       </div>
     );
   }
@@ -45,7 +47,7 @@ export default function CollectionPage() {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">Collection</h1>
+        <h1 className="text-2xl font-bold text-white">{t.collection.title}</h1>
         <p className="text-sm text-gray-400">
           {allParts.length} parts ({blades.length} Blades, {ratchets.length} Ratchets, {bits.length} Bits)
         </p>

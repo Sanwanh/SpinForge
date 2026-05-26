@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
+import { useT } from '@/lib/i18n';
 
 interface BracketMatch {
   id: string;
@@ -23,6 +24,7 @@ const MOCK_BRACKET: BracketMatch[] = [
 ];
 
 function MatchCard({ match }: { match: BracketMatch }) {
+  const t = useT();
   const winner = match.complete ? (match.scoreA > match.scoreB ? 'A' : 'B') : null;
 
   return (
@@ -32,7 +34,7 @@ function MatchCard({ match }: { match: BracketMatch }) {
           {match.playerA}
         </div>
         <span className="text-xs font-mono text-gray-500">
-          {match.complete ? `${match.scoreA} - ${match.scoreB}` : 'vs'}
+          {match.complete ? `${match.scoreA} - ${match.scoreB}` : t.battle.vs}
         </span>
         <div className={clsx('text-xs', winner === 'B' ? 'font-bold text-white' : 'text-gray-400')}>
           {match.playerB}
@@ -40,7 +42,7 @@ function MatchCard({ match }: { match: BracketMatch }) {
       </div>
       {!match.complete && (
         <div className="mt-2 text-center">
-          <span className="text-[10px] text-brand-blue animate-pulse">In Progress</span>
+          <span className="text-[10px] text-brand-blue animate-pulse">{t.tournament.inProgress}</span>
         </div>
       )}
     </div>
@@ -48,19 +50,20 @@ function MatchCard({ match }: { match: BracketMatch }) {
 }
 
 export default function TournamentPage() {
+  const t = useT();
   const rounds = Array.from(new Set(MOCK_BRACKET.map((m) => m.round))).sort();
 
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">Tournament</h1>
-        <p className="text-sm text-gray-400">3on3 bracket tournament - First to 7 points per match</p>
+        <h1 className="text-2xl font-bold text-white">{t.tournament.title}</h1>
+        <p className="text-sm text-gray-400">{t.tournament.subtitle}</p>
       </motion.div>
 
       <div className="flex gap-8 overflow-x-auto pb-4">
         {rounds.map((round) => (
           <div key={round} className="min-w-[280px] space-y-4">
-            <h3 className="text-sm font-bold text-gray-400">Round {round}</h3>
+            <h3 className="text-sm font-bold text-gray-400">{t.tournament.round.replace('{n}', String(round))}</h3>
             {MOCK_BRACKET.filter((m) => m.round === round).map((match) => (
               <MatchCard key={match.id} match={match} />
             ))}
@@ -68,27 +71,27 @@ export default function TournamentPage() {
         ))}
 
         <div className="min-w-[280px] space-y-4">
-          <h3 className="text-sm font-bold text-rarity-legendary">Finals</h3>
+          <h3 className="text-sm font-bold text-rarity-legendary">{t.tournament.finals}</h3>
           <div className="card border-rarity-legendary/30">
-            <p className="text-center text-xs text-gray-500">Awaiting semi-final results</p>
+            <p className="text-center text-xs text-gray-500">{t.tournament.awaitingResults}</p>
           </div>
         </div>
       </div>
 
       <div className="card">
-        <h3 className="mb-2 text-sm font-bold text-gray-400">Prize Pool</h3>
+        <h3 className="mb-2 text-sm font-bold text-gray-400">{t.tournament.prizePool}</h3>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div>
             <p className="text-lg font-bold text-rarity-legendary">500 SPARK</p>
-            <p className="text-xs text-gray-500">1st Place</p>
+            <p className="text-xs text-gray-500">{t.tournament.firstPlace}</p>
           </div>
           <div>
             <p className="text-lg font-bold text-gray-300">250 SPARK</p>
-            <p className="text-xs text-gray-500">2nd Place</p>
+            <p className="text-xs text-gray-500">{t.tournament.secondPlace}</p>
           </div>
           <div>
             <p className="text-lg font-bold text-gray-400">100 SPARK</p>
-            <p className="text-xs text-gray-500">3rd Place</p>
+            <p className="text-xs text-gray-500">{t.tournament.thirdPlace}</p>
           </div>
         </div>
       </div>

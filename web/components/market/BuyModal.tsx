@@ -1,6 +1,7 @@
 'use client';
 
 import { motion, AnimatePresence } from 'framer-motion';
+import { useT } from '@/lib/i18n';
 
 interface BuyModalProps {
   open: boolean;
@@ -12,6 +13,7 @@ interface BuyModalProps {
 }
 
 export function BuyModal({ open, onClose, onConfirm, itemName, price, isPending }: BuyModalProps) {
+  const t = useT();
   return (
     <AnimatePresence>
       {open && (
@@ -40,10 +42,10 @@ export function BuyModal({ open, onClose, onConfirm, itemName, price, isPending 
               </p>
               <div className="flex gap-3">
                 <button onClick={onClose} className="btn-secondary flex-1" disabled={isPending}>
-                  Cancel
+                  {t.common.cancel}
                 </button>
                 <button onClick={onConfirm} className="btn-primary flex-1" disabled={isPending}>
-                  {isPending ? 'Processing...' : 'Confirm Purchase'}
+                  {isPending ? `${t.common.loading}` : t.common.confirm}
                 </button>
               </div>
             </div>

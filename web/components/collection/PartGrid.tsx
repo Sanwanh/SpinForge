@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import clsx from 'clsx';
 import { PartCard, type PartCardData } from './PartCard';
 import { ELEMENTS, BEY_TYPES, RARITIES } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 
 interface PartGridProps {
   parts: PartCardData[];
@@ -14,6 +15,7 @@ interface PartGridProps {
 type PartTypeFilter = 'all' | 'blade' | 'ratchet' | 'bit';
 
 export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
+  const t = useT();
   const [typeFilter, setTypeFilter] = useState<PartTypeFilter>('all');
   const [elementFilter, setElementFilter] = useState<string>('all');
   const [rarityFilter, setRarityFilter] = useState<string>('all');
@@ -68,9 +70,9 @@ export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
           className="rounded-lg border border-gray-700 bg-surface-overlay px-2 py-1.5 text-xs text-gray-300"
           aria-label="Filter by element"
         >
-          <option value="all">All Elements</option>
+          <option value="all">{t.collection.filterByElement}</option>
           {ELEMENTS.map((el, i) => (
-            <option key={el} value={String(i)}>{el}</option>
+            <option key={el} value={String(i)}>{t.elements[el.toLowerCase() as keyof typeof t.elements]}</option>
           ))}
         </select>
 
@@ -81,9 +83,9 @@ export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
           className="rounded-lg border border-gray-700 bg-surface-overlay px-2 py-1.5 text-xs text-gray-300"
           aria-label="Filter by rarity"
         >
-          <option value="all">All Rarities</option>
+          <option value="all">{t.collection.filterByRarity}</option>
           {RARITIES.map((r, i) => (
-            <option key={r} value={String(i)}>{r}</option>
+            <option key={r} value={String(i)}>{t.rarities[r.toLowerCase() as keyof typeof t.rarities]}</option>
           ))}
         </select>
       </div>
@@ -102,7 +104,7 @@ export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
 
       {filtered.length === 0 && (
         <div className="py-16 text-center text-gray-500">
-          {parts.length === 0 ? 'No parts found. Open packs to get started!' : 'No parts match your filters.'}
+          {parts.length === 0 ? t.collection.noItems : 'No parts match your filters.'}
         </div>
       )}
     </div>

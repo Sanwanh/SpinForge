@@ -2,6 +2,7 @@
 
 import clsx from 'clsx';
 import { ZONES, type Zone } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 
 interface ZoneSelectorProps {
   selectedZone: Zone | null;
@@ -24,12 +25,20 @@ const ZONE_SELECTED: Record<Zone, string> = {
   Rail: 'bg-blue-500/20 border-blue-400 text-blue-300 shadow-lg shadow-blue-500/20',
 };
 
+const ZONE_KEYS: Record<Zone, 'center' | 'mid' | 'wall' | 'rail'> = {
+  Center: 'center',
+  Mid: 'mid',
+  Wall: 'wall',
+  Rail: 'rail',
+};
+
 export function ZoneSelector({
   selectedZone,
   onSelect,
   availableZones = [...ZONES],
   disabled = false,
 }: ZoneSelectorProps) {
+  const t = useT();
   return (
     <div className="flex gap-2" role="radiogroup" aria-label="Zone selection">
       {ZONES.map((zone) => {
@@ -52,7 +61,7 @@ export function ZoneSelector({
                   : 'border-gray-700 text-gray-600 cursor-not-allowed opacity-50'
             )}
           >
-            {zone}
+            {t.battle[ZONE_KEYS[zone]]}
             {zone === 'Rail' && <span className="ml-1 text-[10px]">X</span>}
           </button>
         );

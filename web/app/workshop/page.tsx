@@ -12,6 +12,7 @@ import { PartGrid } from '@/components/collection/PartGrid';
 import type { PartCardData } from '@/components/collection/PartCard';
 import type { BladeStats, RatchetStats, BitStats } from '@/lib/physics-sim';
 import { assembleBey } from '@/lib/move-calls';
+import { useT } from '@/lib/i18n';
 
 type SlotType = 'blade' | 'ratchet' | 'bit';
 
@@ -48,6 +49,7 @@ export default function WorkshopPage() {
   const account = useCurrentAccount();
   const { blades, ratchets, bits, refetch } = useInventory();
   const { mutateAsync: signAndExecute, isPending } = useSignAndExecuteTransaction();
+  const t = useT();
 
   const [selectedBlade, setSelectedBlade] = useState<PartCardData | null>(null);
   const [selectedRatchet, setSelectedRatchet] = useState<PartCardData | null>(null);
@@ -86,7 +88,7 @@ export default function WorkshopPage() {
   if (!account) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">Connect your wallet to access the workshop.</p>
+        <p className="text-gray-500">{t.workshop.connectPrompt}</p>
       </div>
     );
   }
@@ -94,19 +96,19 @@ export default function WorkshopPage() {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">Workshop</h1>
-        <p className="text-sm text-gray-400">Assemble your Beyblade from Blade + Ratchet + Bit</p>
+        <h1 className="text-2xl font-bold text-white">{t.workshop.title}</h1>
+        <p className="text-sm text-gray-400">{t.workshop.subtitle}</p>
       </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Assembly area */}
         <div className="card space-y-6 lg:col-span-2">
           <div className="flex items-center justify-center gap-8">
-            <PartSlot label="Blade" partType="blade" part={selectedBlade} onSelect={() => setActiveSlot('blade')} onRemove={() => setSelectedBlade(null)} />
+            <PartSlot label={t.workshop.blade} partType="blade" part={selectedBlade} onSelect={() => setActiveSlot('blade')} onRemove={() => setSelectedBlade(null)} />
             <span className="text-2xl text-gray-600">+</span>
-            <PartSlot label="Ratchet" partType="ratchet" part={selectedRatchet} onSelect={() => setActiveSlot('ratchet')} onRemove={() => setSelectedRatchet(null)} />
+            <PartSlot label={t.workshop.ratchet} partType="ratchet" part={selectedRatchet} onSelect={() => setActiveSlot('ratchet')} onRemove={() => setSelectedRatchet(null)} />
             <span className="text-2xl text-gray-600">+</span>
-            <PartSlot label="Bit" partType="bit" part={selectedBit} onSelect={() => setActiveSlot('bit')} onRemove={() => setSelectedBit(null)} />
+            <PartSlot label={t.workshop.bit} partType="bit" part={selectedBit} onSelect={() => setActiveSlot('bit')} onRemove={() => setSelectedBit(null)} />
           </div>
 
           <AssemblyPreview blade={selectedBlade} ratchet={selectedRatchet} bit={selectedBit} />
@@ -121,7 +123,7 @@ export default function WorkshopPage() {
                 className="flex-1 rounded-lg border border-gray-700 bg-surface-overlay px-4 py-2 text-white placeholder-gray-500 focus:border-brand-blue focus:outline-none"
               />
               <button onClick={handleAssemble} disabled={isPending} className="btn-primary">
-                {isPending ? 'Assembling...' : 'Assemble'}
+                {isPending ? `${t.workshop.assemble}...` : t.workshop.assemble}
               </button>
             </div>
           )}

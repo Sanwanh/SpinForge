@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { RARITY_LABELS, RARITY_BORDER_CLASSES, type Rarity } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 
 interface ListingCardProps {
   objectId: string;
@@ -15,6 +16,7 @@ interface ListingCardProps {
 }
 
 export function ListingCard({ name, partType, rarity, price, seller, onBuy }: ListingCardProps) {
+  const t = useT();
   const rarityLabel = RARITY_LABELS[rarity] ?? ('Common' as Rarity);
   const borderClass = RARITY_BORDER_CLASSES[rarityLabel];
 
@@ -34,7 +36,7 @@ export function ListingCard({ name, partType, rarity, price, seller, onBuy }: Li
         <span className="text-[10px] text-gray-600">
           {seller.slice(0, 6)}...{seller.slice(-4)}
         </span>
-        <button onClick={onBuy} className="btn-primary text-xs">Buy Now</button>
+        <button onClick={onBuy} className="btn-primary text-xs">{t.common.buyNow}</button>
       </div>
     </motion.div>
   );

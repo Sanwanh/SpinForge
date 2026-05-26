@@ -4,10 +4,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { storeSession, type ZkLoginSession } from '@/lib/zklogin';
 import { useAuthStore } from '@/hooks/useAuth';
+import { useT } from '@/lib/i18n';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
   const setZkSession = useAuthStore((s) => s.setZkSession);
+  const t = useT();
   const [status, setStatus] = useState<'processing' | 'error'>('processing');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -64,10 +66,10 @@ export default function AuthCallbackPage() {
   if (status === 'error') {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
-        <h1 className="text-2xl font-bold text-red-400">Authentication Error</h1>
+        <h1 className="text-2xl font-bold text-red-400">{t.auth.authError}</h1>
         <p className="text-sm text-gray-400">{errorMsg}</p>
         <button onClick={() => router.push('/')} className="btn-primary text-sm">
-          Back to Home
+          {t.auth.backToHome}
         </button>
       </div>
     );
@@ -76,7 +78,7 @@ export default function AuthCallbackPage() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
       <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-blue border-t-transparent" />
-      <p className="text-sm text-gray-400">Signing you in...</p>
+      <p className="text-sm text-gray-400">{t.auth.signingIn}</p>
     </div>
   );
 }

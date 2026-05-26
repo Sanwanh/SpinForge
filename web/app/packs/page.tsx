@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { RARITY_LABELS, RARITY_BORDER_CLASSES, SPIRIT_BEASTS, ELEMENT_COLORS, type Rarity, type Element } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 
 interface RevealedPart {
   id: string;
@@ -23,6 +24,7 @@ const MOCK_RESULTS: RevealedPart[] = [
 
 export default function PacksPage() {
   const account = useCurrentAccount();
+  const t = useT();
   const [isOpening, setIsOpening] = useState(false);
   const [revealed, setRevealed] = useState<RevealedPart[]>([]);
   const [revealIndex, setRevealIndex] = useState(-1);
@@ -48,7 +50,7 @@ export default function PacksPage() {
   if (!account) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">Connect your wallet to open packs.</p>
+        <p className="text-gray-500">{t.packs.connectPrompt}</p>
       </div>
     );
   }
@@ -56,8 +58,8 @@ export default function PacksPage() {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">Open Packs</h1>
-        <p className="text-sm text-gray-400">Each pack contains 5 parts. Cost: 100 SPARK</p>
+        <h1 className="text-2xl font-bold text-white">{t.packs.title}</h1>
+        <p className="text-sm text-gray-400">{t.packs.contains}. {t.packs.cost}: 100 SPARK</p>
       </motion.div>
 
       {revealed.length === 0 ? (
@@ -119,8 +121,8 @@ export default function PacksPage() {
 
           {!isOpening && (
             <div className="flex justify-center gap-4">
-              <button onClick={handleReset} className="btn-secondary">Close</button>
-              <button onClick={handleOpenPack} className="btn-primary">Open Another</button>
+              <button onClick={handleReset} className="btn-secondary">{t.common.back}</button>
+              <button onClick={handleOpenPack} className="btn-primary">{t.packs.openPack}</button>
             </div>
           )}
         </div>

@@ -5,21 +5,23 @@ import { motion } from 'framer-motion';
 import clsx from 'clsx';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import type { ForgeMode } from '@/hooks/useForge';
-
-const FORGE_MODES: { mode: ForgeMode; label: string; desc: string; cost: string; inputs: string }[] = [
-  { mode: 'evolve', label: 'Evolution', desc: '3 Common parts -> 1 Rare part', cost: '50 SPARK', inputs: '3 parts (same type, Common)' },
-  { mode: 'fuse', label: 'Fusion', desc: '2 Rare parts -> 1 Epic part', cost: '200 SPARK', inputs: '2 parts (same type, Rare)' },
-  { mode: 'retune', label: 'Re-tune', desc: 'Reroll 1 stat on a part', cost: '75 SPARK', inputs: '1 part (any rarity)' },
-];
+import { useT } from '@/lib/i18n';
 
 export default function ForgePage() {
   const account = useCurrentAccount();
+  const t = useT();
   const [activeMode, setActiveMode] = useState<ForgeMode>('evolve');
+
+  const FORGE_MODES: { mode: ForgeMode; label: string; desc: string; cost: string; inputs: string }[] = [
+    { mode: 'evolve', label: t.forge.evolution, desc: t.forge.evolutionDesc, cost: '50 SPARK', inputs: '3 parts (same type, Common)' },
+    { mode: 'fuse', label: t.forge.fusion, desc: t.forge.fusionDesc, cost: '200 SPARK', inputs: '2 parts (same type, Rare)' },
+    { mode: 'retune', label: t.forge.retune, desc: t.forge.retuneDesc, cost: '75 SPARK', inputs: '1 part (any rarity)' },
+  ];
 
   if (!account) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">Connect your wallet to use the forge.</p>
+        <p className="text-gray-500">{t.forge.connectPrompt}</p>
       </div>
     );
   }
@@ -29,8 +31,8 @@ export default function ForgePage() {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">Forge</h1>
-        <p className="text-sm text-gray-400">Evolve, fuse, and re-tune your parts</p>
+        <h1 className="text-2xl font-bold text-white">{t.forge.title}</h1>
+        <p className="text-sm text-gray-400">{t.forge.evolution}, {t.forge.fusion}, {t.forge.retune}</p>
       </motion.div>
 
       {/* Mode tabs */}
