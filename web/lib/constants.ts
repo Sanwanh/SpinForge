@@ -1,6 +1,6 @@
 // ---- Network ----
 export const SUI_NETWORK = 'testnet' as const;
-export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x0';
+export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0xcb4ae0641d8cdf704bf42e3254a3d8463256dd6e77fb005250af16702466ce48';
 
 // ---- Spirit Beasts ----
 export const SPIRIT_BEASTS = [
