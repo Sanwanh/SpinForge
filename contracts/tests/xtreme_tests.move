@@ -155,4 +155,172 @@ module spinforge::xtreme_tests {
         bit::destroy_for_testing(bit);
         test_scenario::end(scenario);
     }
+
+    // ===================================================================
+    // Can dash without gear -- should return false
+    // ===================================================================
+
+    #[test]
+    fun test_can_dash_without_gear_returns_false() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        // gear_diameter = 0 (no gear)
+        let no_gear_bit = bit::mint(
+            string::utf8(b"NoGear"), 0, 50, 3, 0, false, 0, ctx,
+        );
+        let stadium = stadium::mint_for_testing(ctx);
+
+        // Even on a rail zone, no gear = can't dash
+        assert!(xtreme_dash::can_dash(&no_gear_bit, 3, &stadium) == false);
+        // Non-rail zone
+        assert!(xtreme_dash::can_dash(&no_gear_bit, 0, &stadium) == false);
+
+        bit::destroy_for_testing(no_gear_bit);
+        stadium::destroy_for_testing(stadium);
+        test_scenario::end(scenario);
+    }
+
+    // ===================================================================
+    // Can dash on non-rail zone -- should return false
+    // ===================================================================
+
+    #[test]
+    fun test_can_dash_on_non_rail_zone_returns_false() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        // Gear bit (gear_diameter = 8)
+        let gear_bit = bit::mint(
+            string::utf8(b"GearBit"), 3, 40, 3, 8, false, 0, ctx,
+        );
+        let stadium = stadium::mint_for_testing(ctx);
+
+        // Zone 0 is center (not a rail zone in test stadium)
+        assert!(xtreme_dash::can_dash(&gear_bit, 0, &stadium) == false);
+        // Zone 1 is not a rail zone
+        assert!(xtreme_dash::can_dash(&gear_bit, 1, &stadium) == false);
+        // Zone 2 is not a rail zone
+        assert!(xtreme_dash::can_dash(&gear_bit, 2, &stadium) == false);
+        // Zone 3 IS a rail zone -> should be true
+        assert!(xtreme_dash::can_dash(&gear_bit, 3, &stadium) == true);
+
+        bit::destroy_for_testing(gear_bit);
+        stadium::destroy_for_testing(stadium);
+        test_scenario::end(scenario);
+    }
+
+    // ===================================================================
+    // Additional xtreme dash coverage
+    // ===================================================================
+
+    #[test]
+    fun test_can_dash_no_gear_no_rail() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        let no_gear_bit = bit::mint(
+            string::utf8(b"Flat"), 0, 50, 3, 0, false, 0, ctx,
+        );
+        let stadium = stadium::mint_for_testing(ctx);
+
+        // Neither gear nor rail zone
+        assert!(xtreme_dash::can_dash(&no_gear_bit, 0, &stadium) == false);
+
+        bit::destroy_for_testing(no_gear_bit);
+        stadium::destroy_for_testing(stadium);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    fun test_dash_damage_zero_am() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        let gear_bit = bit::mint(
+            string::utf8(b"Gear"), 3, 40, 3, 8, false, 0, ctx,
+        );
+
+        // 0 AM -> 0 damage regardless of hit
+        let (damage, hit) = xtreme_dash::compute_dash(&gear_bit, 0, 50);
+        assert!(hit == true);
+        assert!(damage == 0);
+
+        bit::destroy_for_testing(gear_bit);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    fun test_dash_recoil_zero_factor() {
+        // recoil_factor = 0 -> 0 recoil
+        let recoil = xtreme_dash::compute_dash_recoil(15000, 0);
+        assert!(recoil == 0);
+    }
+
+    #[test]
+    fun test_dash_recoil_small_damage() {
+        let recoil = xtreme_dash::compute_dash_recoil(10, 30);
+        // 10 * 30 * 2 / 100 = 6
+        assert!(recoil == 6);
+    }
+
+    #[test]
+    fun test_xtreme_finish_both_conditions_required() {
+        // hit=true, am_after=0 -> xtreme finish
+        assert!(xtreme_dash::is_xtreme_finish(true, 0) == true);
+        // hit=true, am_after=1 -> NOT xtreme
+        assert!(xtreme_dash::is_xtreme_finish(true, 1) == false);
+        // hit=false, am_after=0 -> NOT xtreme (must hit)
+        assert!(xtreme_dash::is_xtreme_finish(false, 0) == false);
+        // hit=false, am_after=100 -> NOT xtreme
+        assert!(xtreme_dash::is_xtreme_finish(false, 100) == false);
+    }
+
+    #[test]
+    fun test_accuracy_threshold_all_gear_sizes() {
+        // gear 4 -> small
+        assert!(xtreme_dash::accuracy_threshold(4) == 70);
+        // gear 6 -> small boundary
+        assert!(xtreme_dash::accuracy_threshold(6) == 70);
+        // gear 8 -> medium
+        assert!(xtreme_dash::accuracy_threshold(8) == 85);
+        // gear 10 -> medium boundary
+        assert!(xtreme_dash::accuracy_threshold(10) == 85);
+        // gear 12 -> large
+        assert!(xtreme_dash::accuracy_threshold(12) == 95);
+    }
+
+    #[test]
+    fun test_compute_dash_roll_1_always_hits() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        let small_bit = bit::mint(
+            string::utf8(b"Small"), 3, 40, 3, 4, false, 0, ctx,
+        );
+
+        // Roll 1 <= any threshold
+        let (_damage, hit) = xtreme_dash::compute_dash(&small_bit, 10000, 1);
+        assert!(hit == true);
+
+        bit::destroy_for_testing(small_bit);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
+    fun test_compute_dash_roll_100_always_misses_non_large() {
+        let mut scenario = test_scenario::begin(@0x1);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        let medium_bit = bit::mint(
+            string::utf8(b"Med"), 3, 40, 3, 8, false, 0, ctx,
+        );
+
+        // Roll 100 > 85 threshold -> miss
+        let (_damage, hit) = xtreme_dash::compute_dash(&medium_bit, 10000, 100);
+        assert!(hit == false);
+
+        bit::destroy_for_testing(medium_bit);
+        test_scenario::end(scenario);
+    }
 }

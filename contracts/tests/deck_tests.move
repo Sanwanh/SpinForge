@@ -107,4 +107,105 @@ module spinforge::deck_tests {
     // Each assemble() consumes unique parts, so duplicates are structurally impossible
     // when parts are correctly minted. The validate_deck function provides
     // defense-in-depth against programmatic misuse.
+
+    // ===================================================================
+    // Valid deck -- 3 unique beys pass
+    // ===================================================================
+
+    #[test]
+    fun test_valid_deck_3_unique_beys_pass() {
+        let mut scenario = test_scenario::begin(@0x1);
+
+        let bey_a = make_bey(0, 1, b"Alpha", &mut scenario);
+        let bey_b = make_bey(1, 3, b"Beta", &mut scenario);
+        let bey_c = make_bey(2, 5, b"Gamma", &mut scenario);
+
+        let valid = deck::validate_deck(&bey_a, &bey_b, &bey_c);
+        assert!(valid == true);
+
+        let ctx = test_scenario::ctx(&mut scenario);
+        let deck = deck::create_deck(&bey_a, &bey_b, &bey_c, ctx);
+        let ids = deck::bey_ids(&deck);
+        assert!(vector::length(ids) == 3);
+        assert!(deck::owner(&deck) == @0x1);
+
+        deck::destroy_for_testing(deck);
+
+        let ctx = test_scenario::ctx(&mut scenario);
+        let (b1, r1, bt1) = bey::disassemble(bey_a, ctx);
+        blade::destroy_for_testing(b1); ratchet::destroy_for_testing(r1); bit::destroy_for_testing(bt1);
+        let (b2, r2, bt2) = bey::disassemble(bey_b, ctx);
+        blade::destroy_for_testing(b2); ratchet::destroy_for_testing(r2); bit::destroy_for_testing(bt2);
+        let (b3, r3, bt3) = bey::disassemble(bey_c, ctx);
+        blade::destroy_for_testing(b3); ratchet::destroy_for_testing(r3); bit::destroy_for_testing(bt3);
+
+        test_scenario::end(scenario);
+    }
+
+    // ===================================================================
+    // Deck contains_bey checks
+    // ===================================================================
+
+    #[test]
+    fun test_deck_contains_bey_true_and_false() {
+        let mut scenario = test_scenario::begin(@0x1);
+
+        let bey_a = make_bey(0, 2, b"A1", &mut scenario);
+        let bey_b = make_bey(1, 4, b"B1", &mut scenario);
+        let bey_c = make_bey(2, 6, b"C1", &mut scenario);
+
+        let id_a = bey::id(&bey_a);
+        let id_b = bey::id(&bey_b);
+
+        let ctx = test_scenario::ctx(&mut scenario);
+        let deck = deck::create_deck(&bey_a, &bey_b, &bey_c, ctx);
+
+        assert!(deck::contains_bey(&deck, id_a) == true);
+        assert!(deck::contains_bey(&deck, id_b) == true);
+
+        // Create a fake ID that's not in the deck
+        let fake_obj = object::new(test_scenario::ctx(&mut scenario));
+        let fake_id = object::uid_to_inner(&fake_obj);
+        object::delete(fake_obj);
+        assert!(deck::contains_bey(&deck, fake_id) == false);
+
+        deck::destroy_for_testing(deck);
+
+        let ctx = test_scenario::ctx(&mut scenario);
+        let (b1, r1, bt1) = bey::disassemble(bey_a, ctx);
+        blade::destroy_for_testing(b1); ratchet::destroy_for_testing(r1); bit::destroy_for_testing(bt1);
+        let (b2, r2, bt2) = bey::disassemble(bey_b, ctx);
+        blade::destroy_for_testing(b2); ratchet::destroy_for_testing(r2); bit::destroy_for_testing(bt2);
+        let (b3, r3, bt3) = bey::disassemble(bey_c, ctx);
+        blade::destroy_for_testing(b3); ratchet::destroy_for_testing(r3); bit::destroy_for_testing(bt3);
+
+        test_scenario::end(scenario);
+    }
+
+    // ===================================================================
+    // Deck with different spirit beasts
+    // ===================================================================
+
+    #[test]
+    fun test_deck_diverse_spirit_beasts() {
+        let mut scenario = test_scenario::begin(@0x1);
+
+        // Use spirit beasts 0, 3, 4 (Seiryu, Genbu, Koryu)
+        let bey_a = make_bey(0, 1, b"Seiryu", &mut scenario);
+        let bey_b = make_bey(3, 3, b"Genbu", &mut scenario);
+        let bey_c = make_bey(4, 5, b"Koryu", &mut scenario);
+
+        let valid = deck::validate_deck(&bey_a, &bey_b, &bey_c);
+        assert!(valid == true);
+
+        let ctx = test_scenario::ctx(&mut scenario);
+        let (b1, r1, bt1) = bey::disassemble(bey_a, ctx);
+        blade::destroy_for_testing(b1); ratchet::destroy_for_testing(r1); bit::destroy_for_testing(bt1);
+        let (b2, r2, bt2) = bey::disassemble(bey_b, ctx);
+        blade::destroy_for_testing(b2); ratchet::destroy_for_testing(r2); bit::destroy_for_testing(bt2);
+        let (b3, r3, bt3) = bey::disassemble(bey_c, ctx);
+        blade::destroy_for_testing(b3); ratchet::destroy_for_testing(r3); bit::destroy_for_testing(bt3);
+
+        test_scenario::end(scenario);
+    }
 }
