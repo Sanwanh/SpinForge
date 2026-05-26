@@ -232,7 +232,7 @@ export default function PacksPage() {
               }
               transition={
                 phase === 'opening'
-                  ? { duration: 1.5, repeat: Infinity }
+                  ? { duration: 1.5, repeat: 0 }
                   : phase === 'burst'
                     ? { duration: 0.6, ease: 'easeIn' }
                     : {}

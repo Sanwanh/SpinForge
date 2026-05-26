@@ -64,16 +64,27 @@ export default function WorkshopPage() {
 
   const canAssemble = selectedBlade && selectedRatchet && selectedBit && beyName.trim();
 
+  const [assembleError, setAssembleError] = useState<string | null>(null);
+  const [assembleSuccess, setAssembleSuccess] = useState(false);
+
   const handleAssemble = useCallback(async () => {
-    if (!selectedBlade || !selectedRatchet || !selectedBit || !beyName.trim()) return;
-    const tx = assembleBey(selectedBlade.objectId, selectedRatchet.objectId, selectedBit.objectId, beyName.trim(), account?.address ?? '');
-    await signAndExecute({ transaction: tx });
-    setSelectedBlade(null);
-    setSelectedRatchet(null);
-    setSelectedBit(null);
-    setBeyName('');
-    refetch();
-  }, [selectedBlade, selectedRatchet, selectedBit, beyName, signAndExecute, refetch]);
+    if (!selectedBlade || !selectedRatchet || !selectedBit || !beyName.trim() || !account?.address) return;
+    setAssembleError(null);
+    setAssembleSuccess(false);
+    try {
+      const tx = assembleBey(selectedBlade.objectId, selectedRatchet.objectId, selectedBit.objectId, beyName.trim(), account.address);
+      await signAndExecute({ transaction: tx });
+      setSelectedBlade(null);
+      setSelectedRatchet(null);
+      setSelectedBit(null);
+      setBeyName('');
+      setAssembleSuccess(true);
+      refetch();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Assembly failed';
+      setAssembleError(message);
+    }
+  }, [selectedBlade, selectedRatchet, selectedBit, beyName, account, signAndExecute, refetch]);
 
   const filteredParts = activeSlot ? (
     activeSlot === 'blade' ? blades : activeSlot === 'ratchet' ? ratchets : bits
@@ -99,6 +110,17 @@ export default function WorkshopPage() {
         <h1 className="text-2xl font-bold text-white">{t.workshop.title}</h1>
         <p className="text-sm text-gray-400">{t.workshop.subtitle}</p>
       </motion.div>
+
+      {assembleError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+          {assembleError}
+        </div>
+      )}
+      {assembleSuccess && (
+        <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-400">
+          Beyblade assembled successfully! Check your collection.
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Assembly area */}

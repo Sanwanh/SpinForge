@@ -1,16 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useCurrentAccount } from '@mysten/dapp-kit';
-import { useDeck } from '@/hooks/useDeck';
+import { useDeck, type DeckBey } from '@/hooks/useDeck';
+import { useInventory } from '@/hooks/useInventory';
 import { DeckBuilder } from '@/components/deck/DeckBuilder';
 import { DuplicateWarning } from '@/components/deck/DuplicateWarning';
 import { useT } from '@/lib/i18n';
 
 export default function DeckPage() {
   const account = useCurrentAccount();
-  const { beys, techniques, hasDuplicates, setBey, setTechniques, clear } = useDeck();
+  const { beys: deckBeys, techniques, hasDuplicates, setBey, setTechniques, clear } = useDeck();
+  const { beys: ownedBeys, isLoading } = useInventory();
   const t = useT();
+  const [selectingSlot, setSelectingSlot] = useState<number | null>(null);
 
   if (!account) {
     return (
@@ -20,7 +24,27 @@ export default function DeckPage() {
     );
   }
 
-  const isComplete = beys.every(Boolean) && techniques.length === 12;
+  const isComplete = deckBeys.every(Boolean) && techniques.length === 12;
+
+  const handleSelectBey = (bey: DeckBey) => {
+    if (selectingSlot !== null) {
+      setBey(selectingSlot, bey);
+      setSelectingSlot(null);
+    }
+  };
+
+  // Convert owned Bey objects to DeckBey format
+  const availableBeys: DeckBey[] = ownedBeys.map((b) => ({
+    beyId: b.objectId,
+    name: String(b.fields.name ?? `Bey #${b.objectId.slice(-4)}`),
+    bladeId: String(b.fields.blade_id ?? ''),
+    ratchetId: String(b.fields.ratchet_id ?? ''),
+    bitId: String(b.fields.bit_id ?? ''),
+  }));
+
+  // Filter out beys already in deck
+  const usedBeyIds = new Set(deckBeys.filter(Boolean).map((b) => b!.beyId));
+  const selectableBeys = availableBeys.filter((b) => !usedBeyIds.has(b.beyId));
 
   return (
     <div className="space-y-6">
@@ -45,19 +69,60 @@ export default function DeckPage() {
       <DuplicateWarning show={hasDuplicates} />
 
       <DeckBuilder
-        beys={beys}
-        onSelectSlot={(slot) => {
-          setBey(slot, {
-            beyId: `placeholder-${slot}`,
-            name: `Bey #${slot + 1}`,
-            bladeId: `blade-${slot}`,
-            ratchetId: `ratchet-${slot}`,
-            bitId: `bit-${slot}`,
-          });
-        }}
+        beys={deckBeys}
+        onSelectSlot={(slot) => setSelectingSlot(slot)}
         onRemoveSlot={(slot) => setBey(slot, null)}
         techniques={techniques}
       />
+
+      {/* Bey picker */}
+      {selectingSlot !== null && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card space-y-4"
+        >
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-white">
+              {t.deck.selectBey} #{selectingSlot + 1}
+            </h2>
+            <button
+              onClick={() => setSelectingSlot(null)}
+              className="text-sm text-gray-400 hover:text-white"
+            >
+              {t.common.cancel}
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-blue border-t-transparent" />
+            </div>
+          ) : selectableBeys.length === 0 ? (
+            <div className="py-8 text-center">
+              <p className="text-sm text-gray-400">{t.deck.noBeys}</p>
+              <a href="/workshop" className="mt-2 inline-block text-sm text-brand-blue hover:underline">
+                {t.deck.goWorkshop}
+              </a>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {selectableBeys.map((bey) => (
+                <motion.button
+                  key={bey.beyId}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleSelectBey(bey)}
+                  className="card-hover flex flex-col items-start gap-1 border border-gray-700 text-left transition-all hover:border-brand-blue/50"
+                >
+                  <span className="text-sm font-bold text-white">{bey.name}</span>
+                  <span className="text-[10px] text-gray-500">{bey.beyId.slice(0, 16)}...</span>
+                </motion.button>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* Rules reminder */}
       <div className="card">
