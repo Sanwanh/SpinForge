@@ -8,8 +8,29 @@ export function LocaleToggle() {
   return (
     <button
       onClick={toggle}
-      className="rounded-md px-2 py-1 text-xs font-medium text-gray-400 transition-colors hover:bg-surface-overlay hover:text-white"
       title={locale === 'zh' ? 'Switch to English' : '切換至中文'}
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        border: '1px solid var(--border)',
+        background: 'transparent',
+        color: 'var(--text-mute)',
+        fontFamily: 'var(--f-mono)',
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+        cursor: 'pointer',
+        transition: 'border-color 0.15s, color 0.15s',
+      }}
+      onMouseOver={(e) => {
+        e.currentTarget.style.borderColor = 'var(--gold)';
+        e.currentTarget.style.color = 'var(--gold)';
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.borderColor = 'var(--border)';
+        e.currentTarget.style.color = 'var(--text-mute)';
+      }}
     >
       {locale === 'zh' ? 'EN' : '中'}
     </button>

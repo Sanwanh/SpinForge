@@ -9,6 +9,7 @@ import { useInventory, type PartObject } from '@/hooks/useInventory';
 import { useSparkBalance, useSparkCoins } from '@/hooks/useSparkBalance';
 import { RARITY_LABELS } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
+import { PageHeader, Section, Eyebrow } from '@/components/design/atoms';
 
 type PartType = 'blade' | 'ratchet' | 'bit';
 
@@ -108,35 +109,51 @@ export default function ForgePage() {
 
   if (!account) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">{t.forge.connectPrompt}</p>
-      </div>
+      <>
+        <PageHeader
+          eyebrow="06 / FORGE · 鍛"
+          title={<>Fuse, evolve, <span style={{ color: 'var(--earth)' }}>re-tune.</span></>}
+          sub={t.forge.title}
+          kanjiBg="鍛"
+          accent="var(--earth)"
+        />
+        <Section>
+          <div className="panel" style={{ padding: 64, textAlign: 'center', maxWidth: 560, margin: '0 auto' }}>
+            <p className="muted" style={{ fontSize: 16, margin: 0 }}>{t.forge.connectPrompt}</p>
+          </div>
+        </Section>
+      </>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">{t.forge.title}</h1>
-        <p className="text-sm text-gray-400">{t.forge.evolution}, {t.forge.fusion}, {t.forge.retune}</p>
-        <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/10 px-3 py-1">
-          <span className="text-xs text-gray-400">SPARK</span>
-          <span className="text-sm font-bold text-brand-orange">{sparkBalance}</span>
-        </div>
-      </motion.div>
+    <>
+      <PageHeader
+        eyebrow="06 / FORGE · 鍛"
+        title={<>Fuse, evolve, <span style={{ color: 'var(--earth)' }}>re-tune.</span></>}
+        sub={`${t.forge.evolution} · ${t.forge.fusion} · ${t.forge.retune}`}
+        kanjiBg="鍛"
+        accent="var(--earth)"
+      />
+      <Section style={{ paddingTop: 64, paddingBottom: 64 }}>
+      <div className="sf-flex sf-items-center sf-gap-4" style={{ marginBottom: 32 }}>
+        <Eyebrow>SPARK Balance</Eyebrow>
+        <span
+          className="t-mono"
+          style={{ color: 'var(--gold)', fontSize: 18, fontWeight: 700 }}
+        >
+          {sparkBalance}
+        </span>
+      </div>
 
       {/* Mode tabs */}
-      <div className="flex gap-2">
+      <div className="sf-flex sf-gap-3" style={{ marginBottom: 16 }}>
         {FORGE_MODES.map((fm) => (
           <button
             key={fm.mode}
             onClick={() => handleModeChange(fm.mode)}
-            className={clsx(
-              'rounded-lg px-4 py-2 text-sm font-bold transition-all',
-              activeMode === fm.mode
-                ? 'bg-brand-blue text-white shadow-lg shadow-brand-blue/20'
-                : 'bg-surface-overlay text-gray-400 hover:text-white'
-            )}
+            className={clsx('btn', activeMode === fm.mode ? 'btn-primary' : 'btn-ghost')}
+            style={{ padding: '10px 18px', fontSize: 12 }}
           >
             {fm.label}
           </button>
@@ -145,13 +162,17 @@ export default function ForgePage() {
 
       {/* Error / Success messages */}
       {error && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
-          {error}
+        <div className="panel" style={{ padding: 14, marginBottom: 16, borderColor: 'var(--blood)' }}>
+          <p className="t-mono" style={{ color: 'var(--blood)', fontSize: 12, margin: 0 }}>
+            {error}
+          </p>
         </div>
       )}
       {success && (
-        <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-400">
-          {success}
+        <div className="panel" style={{ padding: 14, marginBottom: 16, borderColor: 'var(--wood)' }}>
+          <p className="t-mono" style={{ color: 'var(--wood)', fontSize: 12, margin: 0 }}>
+            ✓ {success}
+          </p>
         </div>
       )}
 
@@ -261,16 +282,44 @@ export default function ForgePage() {
       </motion.div>
 
       {/* Forge info */}
-      <div className="card">
-        <h3 className="mb-2 text-sm font-bold text-gray-400">Forge Rules</h3>
-        <ul className="space-y-1 text-xs text-gray-500">
-          <li>- Evolution: burn 3 Common parts of the same type to get 1 Rare</li>
-          <li>- Fusion: burn 2 Rare parts of the same type to get 1 Epic</li>
-          <li>- Re-tune: reroll 1 stat randomly (costs 75 SPARK)</li>
-          <li>- Burned parts are permanently destroyed</li>
-          <li>- Legendary parts can only be obtained from Diamond rank milestones</li>
+      <div className="panel" style={{ padding: 24, marginTop: 32 }}>
+        <Eyebrow>Forge Rules</Eyebrow>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: '14px 0 0',
+            display: 'grid',
+            gap: 8,
+            color: 'var(--text-mute)',
+            fontSize: 13,
+          }}
+        >
+          {[
+            'Evolution · burn 3 Common parts of the same type → 1 Rare',
+            'Fusion · burn 2 Rare parts of the same type → 1 Epic',
+            'Re-tune · reroll 1 stat randomly (75 SPARK)',
+            'Burned parts are permanently destroyed',
+            'Legendary parts unlock only via Diamond-rank milestones',
+          ].map((line, i) => (
+            <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
+              <span
+                className="t-mono"
+                style={{
+                  color: 'var(--earth)',
+                  fontSize: 11,
+                  minWidth: 24,
+                  letterSpacing: '0.1em',
+                }}
+              >
+                0{i + 1}
+              </span>
+              {line}
+            </li>
+          ))}
         </ul>
       </div>
-    </div>
+      </Section>
+    </>
   );
 }

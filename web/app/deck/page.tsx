@@ -8,6 +8,7 @@ import { useInventory } from '@/hooks/useInventory';
 import { DeckBuilder } from '@/components/deck/DeckBuilder';
 import { DuplicateWarning } from '@/components/deck/DuplicateWarning';
 import { useT } from '@/lib/i18n';
+import { Eyebrow, PageHeader, Section } from '@/components/design/atoms';
 
 export default function DeckPage() {
   const account = useCurrentAccount();
@@ -18,9 +19,20 @@ export default function DeckPage() {
 
   if (!account) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">{t.deck.connectPrompt}</p>
-      </div>
+      <>
+        <PageHeader
+          eyebrow="DECK · 牌組"
+          title={<>Build your <span style={{ color: 'var(--rare)' }}>3on3</span></>}
+          sub={t.deck.subtitle}
+          kanjiBg="牌"
+          accent="var(--rare)"
+        />
+        <Section>
+          <div className="panel" style={{ padding: 64, textAlign: 'center', maxWidth: 560, margin: '0 auto' }}>
+            <p className="muted" style={{ fontSize: 16, margin: 0 }}>{t.deck.connectPrompt}</p>
+          </div>
+        </Section>
+      </>
     );
   }
 
@@ -47,18 +59,26 @@ export default function DeckPage() {
   const selectableBeys = availableBeys.filter((b) => !usedBeyIds.has(b.beyId));
 
   return (
-    <div className="space-y-6">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white">{t.deck.title}</h1>
-            <p className="text-sm text-gray-400">{t.deck.subtitle}</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={clear} className="btn-secondary text-sm">Clear All</button>
+    <>
+      <PageHeader
+        eyebrow="DECK · 牌組"
+        title={<>Build your <span style={{ color: 'var(--rare)' }}>3on3 deck.</span></>}
+        sub={t.deck.subtitle}
+        kanjiBg="牌"
+        accent="var(--rare)"
+      />
+      <Section style={{ paddingTop: 64, paddingBottom: 64 }}>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 32 }}>
+        <div className="sf-flex sf-justify-between sf-items-center" style={{ gap: 12 }}>
+          <Eyebrow>{availableBeys.length} Beys ready</Eyebrow>
+          <div className="sf-flex sf-gap-3">
+            <button onClick={clear} className="btn btn-ghost" style={{ padding: '10px 16px', fontSize: 12 }}>
+              Clear All
+            </button>
             <button
               disabled={!isComplete || hasDuplicates}
-              className="btn-primary text-sm"
+              className="btn btn-primary"
+              style={{ padding: '10px 18px', fontSize: 12 }}
             >
               {t.deck.save}
             </button>
@@ -125,15 +145,46 @@ export default function DeckPage() {
       )}
 
       {/* Rules reminder */}
-      <div className="card">
-        <h3 className="mb-2 text-sm font-bold text-gray-400">WBBA Deck Rules</h3>
-        <ul className="space-y-1 text-xs text-gray-500">
-          <li>- 3 assembled Beyblades required</li>
-          <li>- No duplicate parts across your deck</li>
-          <li>- 12 Technique cards (max 2 Launch, max 2 Xtreme, max 1 Spirit)</li>
-          <li>- First to 7 points wins the match</li>
+      <div className="panel" style={{ padding: 24, marginTop: 32 }}>
+        <Eyebrow>WBBA Deck Rules</Eyebrow>
+        <ul
+          style={{
+            listStyle: 'none',
+            padding: 0,
+            margin: '14px 0 0',
+            display: 'grid',
+            gap: 8,
+            color: 'var(--text-mute)',
+            fontSize: 13,
+          }}
+        >
+          {[
+            '3 assembled Beyblades required',
+            'No duplicate parts across your deck',
+            '12 Technique cards (max 2 Launch, max 2 Xtreme, max 1 Spirit)',
+            'First to 7 points wins the match',
+          ].map((line, i) => (
+            <li
+              key={i}
+              style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}
+            >
+              <span
+                className="t-mono"
+                style={{
+                  color: 'var(--gold)',
+                  fontSize: 11,
+                  minWidth: 24,
+                  letterSpacing: '0.1em',
+                }}
+              >
+                0{i + 1}
+              </span>
+              {line}
+            </li>
+          ))}
         </ul>
       </div>
-    </div>
+      </Section>
+    </>
   );
 }

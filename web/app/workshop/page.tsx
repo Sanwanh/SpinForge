@@ -13,6 +13,7 @@ import type { PartCardData } from '@/components/collection/PartCard';
 import type { BladeStats, RatchetStats, BitStats } from '@/lib/physics-sim';
 import { assembleBey } from '@/lib/move-calls';
 import { useT } from '@/lib/i18n';
+import { PageHeader, Section, Eyebrow } from '@/components/design/atoms';
 
 type SlotType = 'blade' | 'ratchet' | 'bit';
 
@@ -98,27 +99,53 @@ export default function WorkshopPage() {
 
   if (!account) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">{t.workshop.connectPrompt}</p>
-      </div>
+      <>
+        <PageHeader
+          eyebrow="WORKSHOP · 工坊"
+          title={<>Assemble your <span style={{ color: 'var(--gold)' }}>Beyblade.</span></>}
+          sub={t.workshop.subtitle}
+          kanjiBg="鍛"
+        />
+        <Section>
+          <div className="panel" style={{ padding: 64, textAlign: 'center', maxWidth: 560, margin: '0 auto' }}>
+            <p className="muted" style={{ fontSize: 16, lineHeight: 1.6, margin: 0 }}>
+              {t.workshop.connectPrompt}
+            </p>
+          </div>
+        </Section>
+      </>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">{t.workshop.title}</h1>
-        <p className="text-sm text-gray-400">{t.workshop.subtitle}</p>
-      </motion.div>
+    <>
+      <PageHeader
+        eyebrow="WORKSHOP · 工坊"
+        title={<>Assemble your <span style={{ color: 'var(--gold)' }}>Beyblade.</span></>}
+        sub={t.workshop.subtitle}
+        kanjiBg="鍛"
+      />
+
+      <Section style={{ paddingTop: 64, paddingBottom: 64 }}>
 
       {assembleError && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
-          {assembleError}
+        <div
+          className="panel"
+          style={{ padding: 16, marginBottom: 16, borderColor: 'var(--blood)' }}
+        >
+          <p className="t-mono" style={{ color: 'var(--blood)', fontSize: 12, margin: 0 }}>
+            {assembleError}
+          </p>
         </div>
       )}
       {assembleSuccess && (
-        <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-400">
-          Beyblade assembled successfully! Check your collection.
+        <div
+          className="panel"
+          style={{ padding: 16, marginBottom: 16, borderColor: 'var(--wood)' }}
+        >
+          <p className="t-mono" style={{ color: 'var(--wood)', fontSize: 12, margin: 0 }}>
+            ✓ Beyblade assembled successfully! Check your collection.
+          </p>
         </div>
       )}
 
@@ -142,9 +169,19 @@ export default function WorkshopPage() {
                 placeholder="Name your Beyblade..."
                 value={beyName}
                 onChange={(e) => setBeyName(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-700 bg-surface-overlay px-4 py-2 text-white placeholder-gray-500 focus:border-brand-blue focus:outline-none"
+                style={{
+                  flex: 1,
+                  borderRadius: 8,
+                  border: '1px solid var(--border)',
+                  background: 'var(--void)',
+                  color: 'var(--text)',
+                  padding: '12px 16px',
+                  fontFamily: 'var(--f-body)',
+                  fontSize: 14,
+                  outline: 'none',
+                }}
               />
-              <button onClick={handleAssemble} disabled={isPending} className="btn-primary">
+              <button onClick={handleAssemble} disabled={isPending} className="btn btn-primary">
                 {isPending ? `${t.workshop.assemble}...` : t.workshop.assemble}
               </button>
             </div>
@@ -159,10 +196,22 @@ export default function WorkshopPage() {
 
       {/* Part picker */}
       {activeSlot && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white">Select {activeSlot}</h2>
-            <button onClick={() => setActiveSlot(null)} className="text-sm text-gray-400 hover:text-white">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ marginTop: 32 }}>
+          <div className="sf-flex sf-justify-between sf-items-center" style={{ marginBottom: 16 }}>
+            <Eyebrow>Select {activeSlot}</Eyebrow>
+            <button
+              onClick={() => setActiveSlot(null)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-mute)',
+                fontFamily: 'var(--f-mono)',
+                fontSize: 11,
+                letterSpacing: '0.1em',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+              }}
+            >
               Close
             </button>
           </div>
@@ -177,6 +226,7 @@ export default function WorkshopPage() {
           />
         </motion.div>
       )}
-    </div>
+      </Section>
+    </>
   );
 }

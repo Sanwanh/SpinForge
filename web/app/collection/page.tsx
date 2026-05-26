@@ -6,6 +6,7 @@ import { PartGrid } from '@/components/collection/PartGrid';
 import type { PartCardData } from '@/components/collection/PartCard';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useT } from '@/lib/i18n';
+import { PageHeader, Section, Stat } from '@/components/design/atoms';
 
 export default function CollectionPage() {
   const account = useCurrentAccount();
@@ -38,28 +39,96 @@ export default function CollectionPage() {
 
   if (!account) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center">
-        <p className="text-gray-500">{t.collection.connectPrompt}</p>
-      </div>
+      <>
+        <PageHeader
+          eyebrow="03 / CARDS · 卡片"
+          title={
+            <>
+              Four tiers.
+              <br />
+              One forge.
+            </>
+          }
+          sub="從一片素材到鎮殿傳說，每張卡的稀有度都有獨立的視覺語言。"
+          kanjiBg="卡"
+          accent="var(--epic)"
+        />
+        <Section>
+          <div
+            className="panel"
+            style={{
+              padding: 64,
+              textAlign: 'center',
+              maxWidth: 560,
+              margin: '0 auto',
+            }}
+          >
+            <p
+              className="muted"
+              style={{ fontSize: 16, lineHeight: 1.6, margin: 0 }}
+            >
+              {t.collection.connectPrompt}
+            </p>
+          </div>
+        </Section>
+      </>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-white">{t.collection.title}</h1>
-        <p className="text-sm text-gray-400">
-          {allParts.length} parts ({blades.length} Blades, {ratchets.length} Ratchets, {bits.length} Bits)
-        </p>
-      </motion.div>
+    <>
+      <PageHeader
+        eyebrow="03 / YOUR COLLECTION"
+        title={
+          <>
+            {allParts.length}{' '}
+            <span style={{ color: 'var(--epic)' }}>parts forged.</span>
+          </>
+        }
+        sub="每張卡都是一個 Sui Object —— 它的稀有度、屬性、來歷都活在鏈上。"
+        kanjiBg="卡"
+        accent="var(--epic)"
+      />
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-blue border-t-transparent" />
+      <Section>
+        <div
+          className="sf-grid"
+          style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}
+        >
+          {[
+            { label: 'Total Parts', value: String(allParts.length), color: 'var(--gold)' },
+            { label: 'Blades', value: String(blades.length), color: 'var(--fire)' },
+            { label: 'Ratchets', value: String(ratchets.length), color: 'var(--rare)' },
+            { label: 'Bits', value: String(bits.length), color: 'var(--wood)' },
+          ].map((s) => (
+            <div key={s.label} className="panel" style={{ padding: 18 }}>
+              <Stat label={s.label} value={s.value} color={s.color} />
+            </div>
+          ))}
         </div>
-      ) : (
-        <PartGrid parts={allParts} />
-      )}
-    </div>
+
+        {isLoading ? (
+          <div
+            className="sf-flex sf-items-center"
+            style={{ justifyContent: 'center', padding: '64px 0' }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                border: '2px solid var(--gold)',
+                borderTopColor: 'transparent',
+                animation: 'spin 1s linear infinite',
+              }}
+            />
+          </div>
+        ) : (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            <PartGrid parts={allParts} />
+          </motion.div>
+        )}
+      </Section>
+    </>
   );
 }

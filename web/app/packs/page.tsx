@@ -7,6 +7,7 @@ import { RARITY_LABELS, SPIRIT_BEASTS, ELEMENT_COLORS, PACKAGE_ID, type Rarity, 
 import { useT } from '@/lib/i18n';
 import { useSparkBalance } from '@/hooks/useSparkBalance';
 import { useInventory } from '@/hooks/useInventory';
+import { PageHeader, Section } from '@/components/design/atoms';
 
 interface RevealedCard {
   id: string;
@@ -164,46 +165,81 @@ export default function PacksPage() {
 
   if (!account) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-gray-500">{t.packs.connectPrompt}</p>
-      </div>
+      <>
+        <PageHeader
+          eyebrow="04 / GACHA · 鑄盒"
+          title={
+            <>
+              Open the pack.
+              <br />
+              <span style={{ color: 'var(--gold)' }}>Forge a passport.</span>
+            </>
+          }
+          sub="抽包後五張卡牌會依序翻牌 —— Legendary 會觸發全螢幕色彩潮汐。"
+          kanjiBg="鑄"
+        />
+        <Section>
+          <div
+            className="panel"
+            style={{
+              padding: 64,
+              textAlign: 'center',
+              maxWidth: 560,
+              margin: '0 auto',
+            }}
+          >
+            <p className="muted" style={{ fontSize: 16, lineHeight: 1.6, margin: 0 }}>
+              {t.packs.connectPrompt}
+            </p>
+          </div>
+        </Section>
+      </>
     );
   }
 
   return (
-    <div className="relative min-h-[80vh]">
-      {/* Background particles during opening */}
-      {(phase === 'opening' || phase === 'burst') && (
-        <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-          {Array.from({ length: 30 }).map((_, i) => (
-            <motion.div
-              key={i}
-              className="absolute h-1 w-1 rounded-full bg-brand-blue"
-              initial={{
-                x: '50vw', y: '50vh', scale: 0, opacity: 0,
-              }}
-              animate={{
-                x: `${Math.random() * 100}vw`,
-                y: `${Math.random() * 100}vh`,
-                scale: [0, 1.5, 0],
-                opacity: [0, 1, 0],
-              }}
-              transition={{ duration: 1.5, delay: Math.random() * 0.8, ease: 'easeOut' }}
-            />
-          ))}
-        </div>
-      )}
+    <>
+      <PageHeader
+        eyebrow="04 / GACHA · 鑄盒"
+        title={
+          <>
+            Standard Pack.
+            <br />
+            <span style={{ color: 'var(--gold)' }}>5 random parts.</span>
+          </>
+        }
+        sub={`SPARK ${sparkBalance} · 一包 100 SPARK 包含 5 個零件。`}
+        kanjiBg="鑄"
+      />
 
-      <div className="relative z-10 space-y-6">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-2xl font-bold text-white">{t.packs.title}</h1>
-          <p className="text-sm text-gray-400">{t.packs.contains}</p>
-          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/10 px-3 py-1">
-            <span className="text-xs text-gray-400">SPARK</span>
-            <span className="text-sm font-bold text-brand-orange">{sparkBalance}</span>
+      <div style={{ position: 'relative', minHeight: '60vh', padding: '60px 32px' }}>
+        {/* Background particles during opening */}
+        {(phase === 'opening' || phase === 'burst') && (
+          <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+            {Array.from({ length: 30 }).map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute h-1 w-1 rounded-full"
+                style={{ background: 'var(--gold)' }}
+                initial={{
+                  x: '50vw', y: '50vh', scale: 0, opacity: 0,
+                }}
+                animate={{
+                  x: `${Math.random() * 100}vw`,
+                  y: `${Math.random() * 100}vh`,
+                  scale: [0, 1.5, 0],
+                  opacity: [0, 1, 0],
+                }}
+                transition={{ duration: 1.5, delay: Math.random() * 0.8, ease: 'easeOut' }}
+              />
+            ))}
           </div>
-        </motion.div>
+        )}
+
+        <div
+          className="relative z-10"
+          style={{ maxWidth: 1280, margin: '0 auto' }}
+        >
 
         {error && (
           <motion.div
@@ -239,9 +275,22 @@ export default function PacksPage() {
               }
             >
               {/* Pack visual */}
-              <div className="relative flex h-72 w-52 flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-brand-blue/50 bg-gradient-to-br from-gray-900 via-blue-950/50 to-gray-900">
+              <div
+                className="relative flex h-72 w-52 flex-col items-center justify-center overflow-hidden rounded-2xl border-2"
+                style={{
+                  borderColor: 'rgba(212,175,55,0.5)',
+                  background:
+                    'linear-gradient(160deg, var(--void), #1a1408 50%, var(--abyss))',
+                }}
+              >
                 {/* Holographic shimmer */}
-                <div className="absolute inset-0 bg-gradient-to-br from-brand-blue/10 via-transparent to-brand-orange/10" />
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, rgba(212,175,55,0.10), transparent, rgba(255,184,0,0.10))',
+                  }}
+                />
                 <motion.div
                   className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent"
                   animate={{ x: ['-200%', '200%'] }}
@@ -424,13 +473,13 @@ export default function PacksPage() {
                 <div className="flex gap-3">
                   <button
                     onClick={() => { setPhase('idle'); setCards([]); setRevealIndex(-1); }}
-                    className="rounded-xl border border-gray-600 px-6 py-2.5 text-sm font-medium text-gray-300 transition-all hover:border-brand-blue hover:text-white"
+                    className="btn btn-ghost"
                   >
                     {t.nav.home === '首頁' ? '再開一包' : 'Open Another'}
                   </button>
                   <a
                     href="/collection"
-                    className="btn-primary rounded-xl px-6 py-2.5 text-sm"
+                    className="btn btn-primary"
                   >
                     {t.nav.home === '首頁' ? '查看收藏庫 →' : 'View Collection →'}
                   </a>
@@ -439,7 +488,8 @@ export default function PacksPage() {
             )}
           </motion.div>
         )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
