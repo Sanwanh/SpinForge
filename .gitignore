@@ -40,3 +40,8 @@ coverage/
 
 # Misc
 *.tsbuildinfo
+
+# Local tooling artifacts
+.playwright-mcp/
+.claude/settings.json
+spinforge-*.png

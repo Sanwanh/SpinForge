@@ -1,26 +1,31 @@
+'use client';
+
 import * as React from 'react';
 import { PageHeader, Section } from '@/components/design/atoms';
-
-const MEMBERS = [
-  { name: 'Ren Tanaka', role: 'Founder · Game Director',   kanji: '鑄', color: 'var(--gold)', handle: '@rentanaka',  bio: '前 Sega 卡牌設計師。第三代 Beyblade 玩家。相信實體陀螺的觸感不該被替代，只該被擴展。' },
-  { name: 'Mira Chen',  role: 'Chief Architect · Sui',     kanji: '鏈', color: 'var(--rare)', handle: '@miramint',   bio: '前 Mysten Labs Move VM 工程師。把每場真實對戰寫成一筆不可篡改的歷史。' },
-  { name: 'Kai Vargas', role: 'Visual Director',           kanji: '畫', color: 'var(--epic)', handle: '@kaivisuals', bio: '前 miHoYo 概念藝術。把五行神獸畫成既古典又賽博的形態 —— 不是日漫，不是國畫，是 SpinForge。' },
-  { name: 'Jules Park', role: 'Tournament & Community',    kanji: '賽', color: 'var(--wood)', handle: '@julespark',  bio: '前 Riot 賽事總監。從 NTUST 校園賽到 Forge Cup S1 全球決賽，把場館變成節慶。' },
-];
+import { useT } from '@/lib/i18n';
 
 export default function TeamPage() {
+  const t = useT();
+
+  const members = [
+    { name: t.team.member1Name, role: t.team.member1Role, kanji: '鑄', color: 'var(--gold)', handle: '@rentanaka',  bio: t.team.member1Bio },
+    { name: t.team.member2Name, role: t.team.member2Role, kanji: '鏈', color: 'var(--rare)', handle: '@miramint',   bio: t.team.member2Bio },
+    { name: t.team.member3Name, role: t.team.member3Role, kanji: '畫', color: 'var(--epic)', handle: '@kaivisuals', bio: t.team.member3Bio },
+    { name: t.team.member4Name, role: t.team.member4Role, kanji: '賽', color: 'var(--wood)', handle: '@julespark',  bio: t.team.member4Bio },
+  ];
+
   return (
     <>
       <PageHeader
-        eyebrow="10 / TEAM · 鑄工"
+        eyebrow={t.team.pageEyebrow}
         title={
           <>
-            Built by people
+            {t.team.pageTitle1}
             <br />
-            who spin.
+            {t.team.pageTitle2}
           </>
         }
-        sub="不是行銷團隊做的 Web3 遊戲，是 Beyblade 玩家做的鏈上產品。"
+        sub={t.team.pageSub}
         kanjiBg="工"
       />
 
@@ -29,7 +34,7 @@ export default function TeamPage() {
           className="team-grid sf-grid"
           style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 20 }}
         >
-          {MEMBERS.map((m, i) => (
+          {members.map((m, i) => (
             <div
               key={i}
               className="panel"
@@ -125,12 +130,11 @@ export default function TeamPage() {
           style={{
             marginTop: 64,
             padding: 56,
-            background:
-              'linear-gradient(135deg, rgba(212,175,55,0.08), transparent 60%)',
+            background: 'linear-gradient(135deg, rgba(212,175,55,0.08), transparent 60%)',
             textAlign: 'center',
           }}
         >
-          <div className="t-eyebrow">OUR BELIEF</div>
+          <div className="t-eyebrow">{t.team.beliefEyebrow}</div>
           <p
             style={{
               fontFamily: 'var(--f-display)',
@@ -141,17 +145,14 @@ export default function TeamPage() {
               margin: '18px auto 0',
             }}
           >
-            &ldquo;The thrill of a spinning top isn&apos;t an interaction pattern —
+            {t.team.beliefBody1}
             <br />
-            <span style={{ color: 'var(--gold)' }}>
-              it&apos;s a 40-year mechanical heritage.
-            </span>
+            <span style={{ color: 'var(--gold)' }}>{t.team.beliefBody2}</span>
             <br />
-            We&apos;re not replacing it. We&apos;re giving it a memory.&rdquo;
+            {t.team.beliefBody3}
           </p>
         </div>
       </Section>
-
     </>
   );
 }

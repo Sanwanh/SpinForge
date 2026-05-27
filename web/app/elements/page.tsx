@@ -9,6 +9,7 @@ import {
   SectionHead,
 } from '@/components/design/atoms';
 import { ELEMENT_MAP, type ElementId } from '@/components/design/tokens';
+import { useT } from '@/lib/i18n';
 
 const ELEMENT_ORDER: ElementId[] = ['wood', 'fire', 'earth', 'metal', 'water'];
 
@@ -544,30 +545,48 @@ function ElementAltar({
   );
 }
 
-const ALTARS: { el: ElementId; role: string; stats: Record<string, number>; lore: string }[] = [
-  { el: 'wood',  role: 'Stamina & Counter', stats: { HP: 78, ATK: 70, DEF: 65, SPD: 88 }, lore: '青龍司東方，主春與生長。木性陀螺以纏繞與持久取勝，反擊招式最致命。' },
-  { el: 'fire',  role: 'Attack Burst',      stats: { HP: 65, ATK: 92, DEF: 50, SPD: 82 }, lore: '朱雀司南方，主夏與烈焰。火性陀螺爆發力極強，但耐久脆弱，適合速戰速決。' },
-  { el: 'earth', role: 'Heavy Defense',     stats: { HP: 90, ATK: 70, DEF: 85, SPD: 55 }, lore: '黃龍居中央，主四季交替。土性陀螺以厚重與穩定立基，難以擊飛，是場館擂主常用。' },
-  { el: 'metal', role: 'Wall & Razor',      stats: { HP: 80, ATK: 75, DEF: 90, SPD: 60 }, lore: '白虎司西方，主秋與肅殺。金性陀螺有金屬光澤的銳邊與最強防禦，擅長定點反擊。' },
-  { el: 'water', role: 'Endurance Tide',    stats: { HP: 85, ATK: 60, DEF: 80, SPD: 70 }, lore: '玄武司北方，主冬與隱藏。水性陀螺如潮汐持久，擅打消耗戰，等對手氣竭。' },
-];
+const ALTAR_STATS: Record<ElementId, Record<string, number>> = {
+  wood:  { HP: 78, ATK: 70, DEF: 65, SPD: 88 },
+  fire:  { HP: 65, ATK: 92, DEF: 50, SPD: 82 },
+  earth: { HP: 90, ATK: 70, DEF: 85, SPD: 55 },
+  metal: { HP: 80, ATK: 75, DEF: 90, SPD: 60 },
+  water: { HP: 85, ATK: 60, DEF: 80, SPD: 70 },
+};
+
+const ALTAR_ORDER: ElementId[] = ['wood', 'fire', 'earth', 'metal', 'water'];
 
 export default function ElementsPage() {
+  const t = useT();
   const [active, setActive] = React.useState<ElementId>('fire');
   const v = ELEMENT_MAP[active];
+
+  const altarRole: Record<ElementId, string> = {
+    wood: t.elements.woodRole,
+    fire: t.elements.fireRole,
+    earth: t.elements.earthRole,
+    metal: t.elements.metalRole,
+    water: t.elements.waterRole,
+  };
+  const altarLore: Record<ElementId, string> = {
+    wood: t.elements.woodLore,
+    fire: t.elements.fireLore,
+    earth: t.elements.earthLore,
+    metal: t.elements.metalLore,
+    water: t.elements.waterLore,
+  };
 
   return (
     <>
       <PageHeader
-        eyebrow="02 / WU XING · 五行"
+        eyebrow={t.elements.pageEyebrow}
         title={
           <>
-            Five elements.
+            {t.elements.pageTitle1}
             <br />
-            One eternal cycle.
+            {t.elements.pageTitle2}
           </>
         }
-        sub="木生火，火生土，土生金，金生水，水生木。五行不只是顏色 —— 是你陀螺的種族、職業、與克制鏈。"
+        sub={t.elements.pageSub}
         kanjiBg="五"
       />
 
@@ -622,7 +641,7 @@ export default function ElementsPage() {
                   fontWeight: 700,
                 }}
               >
-                HOVERED · {v.beastNameZh}
+                {t.elements.hovered}{v.beastNameZh}
               </div>
               <div
                 style={{
@@ -660,7 +679,7 @@ export default function ElementsPage() {
                 }}
               >
                 <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 14 }}>
-                  Mandala Legend
+                  {t.elements.legendTitle}
                 </div>
                 <div style={{ display: 'grid', gap: 10 }}>
                   <div className="sf-flex sf-items-center sf-gap-3">
@@ -671,7 +690,7 @@ export default function ElementsPage() {
                       className="t-mono"
                       style={{ fontSize: 11, color: 'var(--text)' }}
                     >
-                      生 GENERATES · clockwise flow
+                      {t.elements.generatesFlow}
                     </span>
                   </div>
                   <div className="sf-flex sf-items-center sf-gap-3">
@@ -682,7 +701,7 @@ export default function ElementsPage() {
                       className="t-mono"
                       style={{ fontSize: 11, color: 'var(--text)' }}
                     >
-                      剋 OVERCOMES · skip-2 cross
+                      {t.elements.overcomesFlow}
                     </span>
                   </div>
                   <div
@@ -697,7 +716,7 @@ export default function ElementsPage() {
                       className="t-mono"
                       style={{ fontSize: 10, color: 'var(--text-mute)' }}
                     >
-                      Hover a beast to highlight its 剋 line.
+                      {t.elements.hoverHint}
                     </span>
                   </div>
                 </div>
@@ -709,9 +728,9 @@ export default function ElementsPage() {
 
       <Section>
         <SectionHead
-          eyebrow="THE TWO CYCLES"
-          title="生 與 剋。"
-          sub="五行的兩個基本關係：相生 (Sheng / Generates) 是給予，相剋 (Ke / Overcomes) 是制衡。"
+          eyebrow={t.elements.twoCyclesEyebrow}
+          title={t.elements.twoCyclesTitle}
+          sub={t.elements.twoCyclesSub}
           align="center"
         />
         <div
@@ -721,19 +740,19 @@ export default function ElementsPage() {
           {[
             {
               kanji: '生',
-              en: 'GENERATES (sheng)',
+              en: t.elements.generatesLabel,
               color: 'var(--wood)',
-              flow: '木 → 火 → 土 → 金 → 水 → 木',
-              desc: '順時針流動。木生火 — 木材燃燒成火；火生土 — 灰燼回歸塵土；土生金 — 礦石蘊於地中；金生水 — 金屬凝結露水；水生木 — 水養樹木。',
-              effect: 'Forge bonus · +15% stat carry-over',
+              flow: t.elements.generatesFlowStr,
+              desc: t.elements.generatesDesc,
+              effect: t.elements.generatesEffect,
             },
             {
               kanji: '剋',
-              en: 'OVERCOMES (ke)',
+              en: t.elements.overcomesLabel,
               color: 'var(--blood)',
-              flow: '木 → 土 / 火 → 金 / 土 → 水 / 金 → 木 / 水 → 火',
-              desc: '穿越星型。木剋土 — 樹根穿穴；火剋金 — 烈焰熔金；土剋水 — 堤防擋洪；金剋木 — 鋸斫樹；水剋火 — 大水滅炎。對戰相剋元素有 ×1.25 傷害加成。',
-              effect: 'Battle bonus · ×1.25 damage to overcome',
+              flow: t.elements.overcomesFlowStr,
+              desc: t.elements.overcomesDesc,
+              effect: t.elements.overcomesEffect,
             },
           ].map((c, i) => (
             <div
@@ -831,14 +850,20 @@ export default function ElementsPage() {
 
       <Section>
         <SectionHead
-          eyebrow="FIVE ALTARS · 五座神壇"
-          title="Meet the spirit beasts."
-          sub="每個元素都有自己的戰鬥角色、地理方位、四季對應。從上古傳說，變成你陀螺的職業階級。"
+          eyebrow={t.elements.altarsEyebrow}
+          title={t.elements.altarsTitle}
+          sub={t.elements.altarsSub}
           align="center"
         />
         <div style={{ display: 'grid', gap: 24 }}>
-          {ALTARS.map((a) => (
-            <ElementAltar key={a.el} {...a} />
+          {ALTAR_ORDER.map((el) => (
+            <ElementAltar
+              key={el}
+              el={el}
+              role={altarRole[el]}
+              stats={ALTAR_STATS[el]}
+              lore={altarLore[el]}
+            />
           ))}
         </div>
       </Section>

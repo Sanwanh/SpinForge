@@ -1,16 +1,13 @@
+'use client';
+
 import * as React from 'react';
 import { PageHeader, Section, SectionHead } from '@/components/design/atoms';
+import { useT } from '@/lib/i18n';
 
-const ALLOCATIONS = [
-  { k: 'Play-to-Earn',    pct: 38, color: '#D4AF37', desc: 'Battle rewards · season prizes · tournament pools' },
-  { k: 'Treasury',        pct: 18, color: '#00CCFF', desc: 'Governance vault · 4yr vesting' },
-  { k: 'Team & Advisors', pct: 15, color: '#a855f7', desc: '12-month cliff · 36-month linear' },
-  { k: 'Liquidity',       pct: 12, color: '#00FF88', desc: 'Cetus + Aftermath DEX seeding' },
-  { k: 'Public Sale',     pct: 10, color: '#FFB800', desc: 'Community round · TGE Q3 2026' },
-  { k: 'Marketing',       pct:  7, color: '#FF4444', desc: 'Arenas · creators · partners' },
-];
+const ALLOC_PCT = [38, 18, 15, 12, 10, 7] as const;
+const ALLOC_COLORS = ['#D4AF37', '#00CCFF', '#a855f7', '#00FF88', '#FFB800', '#FF4444'];
 
-function SparkPie() {
+function SparkPie({ totalLabel, suite }: { totalLabel: string; suite: string }) {
   const R = 130;
   const C = 2 * Math.PI * R;
   let offset = 0;
@@ -20,8 +17,8 @@ function SparkPie() {
         viewBox="-170 -170 340 340"
         style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}
       >
-        {ALLOCATIONS.map((d, i) => {
-          const dash = (d.pct / 100) * C;
+        {ALLOC_PCT.map((pct, i) => {
+          const dash = (pct / 100) * C;
           const seg = (
             <circle
               key={i}
@@ -29,7 +26,7 @@ function SparkPie() {
               cy="0"
               r={R}
               fill="none"
-              stroke={d.color}
+              stroke={ALLOC_COLORS[i]}
               strokeWidth="42"
               strokeDasharray={`${dash} ${C - dash}`}
               strokeDashoffset={-offset}
@@ -51,7 +48,7 @@ function SparkPie() {
       >
         <div>
           <div className="t-eyebrow" style={{ fontSize: 10 }}>
-            Total Supply
+            {totalLabel}
           </div>
           <div
             className="text-gradient"
@@ -74,7 +71,7 @@ function SparkPie() {
               whiteSpace: 'nowrap',
             }}
           >
-            $SPARK · SUI
+            {suite}
           </div>
         </div>
       </div>
@@ -82,26 +79,37 @@ function SparkPie() {
   );
 }
 
-const UTILITY = [
-  { k: 'EARN',  desc: 'Win battles, complete seasons, tournament prizes', color: 'var(--wood)' },
-  { k: 'FORGE', desc: 'Burn SPARK to fuse parts and unlock legendary tiers', color: 'var(--gold)' },
-  { k: 'STAKE', desc: 'Lock in arenas to earn fees + governance weight',   color: 'var(--rare)' },
-  { k: 'TRADE', desc: 'Marketplace fees flow back to the play-to-earn pool', color: 'var(--epic)' },
-];
-
 export default function TokenomicsPage() {
+  const t = useT();
+
+  const allocations = [
+    { k: t.tokenomics.p2eName,        desc: t.tokenomics.p2eDesc,        pct: 38, color: '#D4AF37' },
+    { k: t.tokenomics.treasuryName,   desc: t.tokenomics.treasuryDesc,   pct: 18, color: '#00CCFF' },
+    { k: t.tokenomics.teamName,       desc: t.tokenomics.teamDesc,       pct: 15, color: '#a855f7' },
+    { k: t.tokenomics.liquidityName,  desc: t.tokenomics.liquidityDesc,  pct: 12, color: '#00FF88' },
+    { k: t.tokenomics.publicName,     desc: t.tokenomics.publicDesc,     pct: 10, color: '#FFB800' },
+    { k: t.tokenomics.marketingName,  desc: t.tokenomics.marketingDesc,  pct: 7,  color: '#FF4444' },
+  ];
+
+  const utility = [
+    { k: t.tokenomics.earnName,  desc: t.tokenomics.earnDesc,  color: 'var(--wood)' },
+    { k: t.tokenomics.forgeName, desc: t.tokenomics.forgeDesc, color: 'var(--gold)' },
+    { k: t.tokenomics.stakeName, desc: t.tokenomics.stakeDesc, color: 'var(--rare)' },
+    { k: t.tokenomics.tradeName, desc: t.tokenomics.tradeDesc, color: 'var(--epic)' },
+  ];
+
   return (
     <>
       <PageHeader
-        eyebrow="08 / $SPARK"
+        eyebrow={t.tokenomics.pageEyebrow}
         title={
           <>
-            The current
+            {t.tokenomics.pageTitle1}
             <br />
-            that drives the spin.
+            {t.tokenomics.pageTitle2}
           </>
         }
-        sub="SPARK 是 SpinForge 的角動量代幣 —— 抽包、鑄造、上市、報名比賽，每一個動作都流動著它。"
+        sub={t.tokenomics.pageSub}
         kanjiBg="幣"
       />
 
@@ -115,10 +123,10 @@ export default function TokenomicsPage() {
           }}
         >
           <div style={{ display: 'grid', placeItems: 'center' }}>
-            <SparkPie />
+            <SparkPie totalLabel={t.tokenomics.totalSupply} suite={t.tokenomics.suite} />
           </div>
           <div>
-            {ALLOCATIONS.map((d, i) => (
+            {allocations.map((d, i) => (
               <div
                 key={i}
                 style={{
@@ -173,9 +181,9 @@ export default function TokenomicsPage() {
 
         <div style={{ marginTop: 96 }}>
           <SectionHead
-            eyebrow="UTILITY LOOP"
-            title="A closed economic circle."
-            sub="SPARK 不是被動囤積的資產 —— 它在玩家、戰場、市場之間不停旋轉。"
+            eyebrow={t.tokenomics.utilityEyebrow}
+            title={t.tokenomics.utilityTitle}
+            sub={t.tokenomics.utilitySub}
             align="center"
           />
           <div
@@ -188,7 +196,7 @@ export default function TokenomicsPage() {
               overflow: 'hidden',
             }}
           >
-            {UTILITY.map((d, i) => (
+            {utility.map((d, i) => (
               <div
                 key={i}
                 style={{ padding: '32px 28px', background: 'var(--void)' }}
@@ -214,9 +222,9 @@ export default function TokenomicsPage() {
 
         <div style={{ marginTop: 96 }}>
           <SectionHead
-            eyebrow="EMISSIONS"
-            title="48-month deflationary curve."
-            sub="Play-to-Earn 池每月遞減 8%。Forge 與賽季報名會永久銷毀 30% SPARK，讓網路在規模化時保持稀缺。"
+            eyebrow={t.tokenomics.emissionsEyebrow}
+            title={t.tokenomics.emissionsTitle}
+            sub={t.tokenomics.emissionsSub}
             align="center"
           />
           <div className="panel" style={{ padding: 32 }}>
@@ -265,7 +273,6 @@ export default function TokenomicsPage() {
           </div>
         </div>
       </Section>
-
     </>
   );
 }

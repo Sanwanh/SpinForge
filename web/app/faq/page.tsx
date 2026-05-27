@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { PageHeader, Section } from '@/components/design/atoms';
+import { useT } from '@/lib/i18n';
 
 interface FAQItemModel {
   q: string;
@@ -13,63 +14,6 @@ interface FAQCategory {
   color: string;
   items: FAQItemModel[];
 }
-
-const CATEGORIES: FAQCategory[] = [
-  {
-    label: 'Getting Started',
-    color: 'var(--gold)',
-    items: [
-      {
-        q: '我需要先有一顆實體陀螺才能玩嗎？',
-        a: '不一定。模式 03 (純線上模擬) 不需要實體陀螺，只要錢包就能開戰。但模式 01 (實體+鏈上紀錄) 與模式 02 (實體+卡牌) 都需要一顆已註冊的 Rotor —— 那才是 SpinForge 最有感的體驗。',
-      },
-      {
-        q: '我可以用自己手邊的陀螺嗎？還是一定要買官方的？',
-        a: '都可以。官方授權陀螺透過 QR/NFC 掃描成為「認證 Rotor」，可參加所有正式賽。自帶陀螺需要手動註冊照片，成為「社群 Rotor」，可參加友誼賽與校園賽，但不能領取官方獎金。',
-      },
-      {
-        q: '完全沒玩過 Web3 也可以開始嗎？',
-        a: '可以。我們提供 Google / Email / Sui zkLogin 三種登入方式。錢包與 SPARK 會在你第一次需要的時候才出現 —— 不會一開始就要求你連結 MetaMask。',
-      },
-    ],
-  },
-  {
-    label: 'Game Mechanics',
-    color: 'var(--blood)',
-    items: [
-      {
-        q: '卡牌會直接改變現實的物理結果嗎？',
-        a: '不會，這是我們堅持的設計原則。卡牌只影響賽事任務 (例如「本場若用 Burst Finish 獲勝額外 +10 分」) 與賽季積分，不會讓你的實體陀螺突然變強。鏈上資產的價值，來自履歷與資格，不是物理優勢。',
-      },
-      {
-        q: '比賽結果怎麼確認？會不會有人作弊？',
-        a: 'MVP 階段是雙方點擊確認。中期會引入裁判帳號 (校園賽、官方賽)。長期目標是手機錄影 + AI 自動判定停轉、出界、爆裂等狀態。任何模式下，結果都需要對手確認才能上鏈。',
-      },
-      {
-        q: 'Launch Power Meter 是什麼？它會影響結果嗎？',
-        a: '賽前的擺動式發射力測試，75-95 區為甜蜜點，88-92 為完美值。它對應「角動量加成 (Angular Momentum Multiplier)」, 從 ×0.00 到 ×2.00 影響戰報判定中的某些卡牌條件。長期目標是接上 BLE 真實發射器，讀取你實體出手的真實力道。',
-      },
-    ],
-  },
-  {
-    label: 'On-Chain & Economy',
-    color: 'var(--rare)',
-    items: [
-      {
-        q: 'Spin Passport 是 NFT 嗎？可以轉售嗎？',
-        a: '是 Sui Object，本質類似 NFT，但設計上更接近「履歷」而非「圖片」。Rotor Passport 可以轉讓 (代表你把陀螺與履歷一起交給別人)，但徽章與賽事紀錄是 soulbound —— 它們屬於玩家本人，不能單獨交易。',
-      },
-      {
-        q: '為什麼選 Sui？Gas 費會很貴嗎？',
-        a: 'Sui 的 Move 模型讓 Rotor、BattleRecord 都可以做成 first-class object，讀寫成本低且支援大量並發，非常適合遊戲場景。一場比賽上鏈的 gas 大約 0.0002 SUI (低於 $0.001 USD)，且我們會補貼新玩家前 100 場。',
-      },
-      {
-        q: '$SPARK 是什麼？它怎麼進入流通？',
-        a: '$SPARK 是遊戲內的角動量代幣 —— 抽包、Forge、Marketplace 手續費、賽事報名都需要它。10% 透過公售進入流通，38% 為玩家獎勵，Team/Treasury/Liquidity/Marketing 為其餘部分。TGE 預計 Q3 2026。',
-      },
-    ],
-  },
-];
 
 function FAQItem({
   q,
@@ -138,20 +82,52 @@ function FAQItem({
 }
 
 export default function FAQPage() {
+  const t = useT();
   const [open, setOpen] = React.useState(0);
   let counter = 0;
+
+  const categories: FAQCategory[] = [
+    {
+      label: t.faq.catGettingStarted,
+      color: 'var(--gold)',
+      items: [
+        { q: t.faq.q1, a: t.faq.a1 },
+        { q: t.faq.q2, a: t.faq.a2 },
+        { q: t.faq.q3, a: t.faq.a3 },
+      ],
+    },
+    {
+      label: t.faq.catGameMechanics,
+      color: 'var(--blood)',
+      items: [
+        { q: t.faq.q4, a: t.faq.a4 },
+        { q: t.faq.q5, a: t.faq.a5 },
+        { q: t.faq.q6, a: t.faq.a6 },
+      ],
+    },
+    {
+      label: t.faq.catOnChain,
+      color: 'var(--rare)',
+      items: [
+        { q: t.faq.q7, a: t.faq.a7 },
+        { q: t.faq.q8, a: t.faq.a8 },
+        { q: t.faq.q9, a: t.faq.a9 },
+      ],
+    },
+  ];
+
   return (
     <>
       <PageHeader
-        eyebrow="11 / FAQ"
+        eyebrow={t.faq.pageEyebrow}
         title={
           <>
-            Common
+            {t.faq.pageTitle1}
             <br />
-            questions.
+            {t.faq.pageTitle2}
           </>
         }
-        sub="找不到答案？來 Discord 直接問我們。"
+        sub={t.faq.pageSub}
         kanjiBg="問"
       />
       <Section>
@@ -165,9 +141,9 @@ export default function FAQPage() {
         >
           <div style={{ position: 'sticky', top: 100 }}>
             <div className="t-eyebrow" style={{ marginBottom: 16 }}>
-              Topics
+              {t.faq.topics}
             </div>
-            {CATEGORIES.map((c, i) => (
+            {categories.map((c, i) => (
               <div
                 key={i}
                 style={{
@@ -211,13 +187,13 @@ export default function FAQPage() {
             ))}
             <div style={{ marginTop: 32 }}>
               <a href="#" className="btn btn-ghost">
-                Ask in Discord
+                {t.faq.askDiscord}
               </a>
             </div>
           </div>
 
           <div>
-            {CATEGORIES.map((c, ci) => (
+            {categories.map((c, ci) => (
               <div key={ci} style={{ marginBottom: 56 }}>
                 <div
                   className="t-eyebrow"
@@ -247,7 +223,6 @@ export default function FAQPage() {
           </div>
         </div>
       </Section>
-
     </>
   );
 }

@@ -68,7 +68,7 @@ export const NAV_PAGES: NavPage[] = [
   { id: 'elements',    label: 'Elements',   href: '/elements',    group: 1 },
   { id: 'cards',       label: 'Cards',      href: '/collection',  group: 1 },
   { id: 'gacha',       label: 'Gacha',      href: '/packs',       group: 2 },
-  { id: 'battle',      label: 'Battle',     href: '/tournament',  group: 2 },
+  { id: 'battle',      label: 'Battle',     href: '/battle',      group: 2 },
   { id: 'forge',       label: 'Forge',      href: '/forge',       group: 2 },
   { id: 'marketplace', label: 'Market',     href: '/market',      group: 3 },
   { id: 'tokenomics',  label: '$SPARK',     href: '/tokenomics',  group: 3 },

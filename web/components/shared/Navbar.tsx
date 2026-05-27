@@ -8,10 +8,31 @@ import { WalletButton } from './WalletButton';
 import { LocaleToggle } from './LocaleToggle';
 import { Logo } from '@/components/design/Logo';
 import { NAV_PAGES, activePageId } from '@/components/design/tokens';
+import { useT } from '@/lib/i18n';
 
 export function Navbar() {
   const pathname = usePathname();
   const active = activePageId(pathname || '/');
+  const t = useT();
+
+  // Map design-token nav-page ids to i18n keys
+  const navLabel = (id: string): string => {
+    switch (id) {
+      case 'passport':    return t.nav.passport;
+      case 'elements':    return t.nav.elements;
+      case 'cards':       return t.nav.cards;
+      case 'gacha':       return t.nav.gacha;
+      case 'battle':      return t.nav.battle;
+      case 'forge':       return t.nav.forge;
+      case 'marketplace': return t.nav.market;
+      case 'tokenomics':  return t.nav.spark;
+      case 'tournament':  return t.nav.tournament;
+      case 'team':        return t.nav.team;
+      case 'faq':         return t.nav.faq;
+      case 'index':       return t.nav.home;
+      default:            return id;
+    }
+  };
 
   const visible = NAV_PAGES.filter((p) => p.id !== 'index');
 
@@ -33,7 +54,7 @@ export function Navbar() {
               <React.Fragment key={p.id}>
                 {divider && <span className="sf-nav-divider">·</span>}
                 <Link href={p.href} className={active === p.id ? 'active' : undefined}>
-                  {p.label}
+                  {navLabel(p.id)}
                 </Link>
               </React.Fragment>
             );
@@ -48,15 +69,15 @@ export function Navbar() {
 
       <nav className="sf-mobile-bar" aria-label="Mobile primary">
         {[
-          { id: 'index', label: 'Home', k: '家', href: '/' },
-          { id: 'gacha', label: 'Gacha', k: '鑄', href: '/packs' },
-          { id: 'cards', label: 'Cards', k: '卡', href: '/collection' },
-          { id: 'marketplace', label: 'Market', k: '市', href: '/market' },
-          { id: 'passport', label: 'Passport', k: '證', href: '/passport' },
+          { id: 'index',       k: '家', href: '/' },
+          { id: 'gacha',       k: '鑄', href: '/packs' },
+          { id: 'cards',       k: '卡', href: '/collection' },
+          { id: 'marketplace', k: '市', href: '/market' },
+          { id: 'passport',    k: '證', href: '/passport' },
         ].map((p) => (
           <Link key={p.id} href={p.href} className={clsx(active === p.id && 'active')}>
             <span className="k">{p.k}</span>
-            {p.label}
+            {navLabel(p.id)}
           </Link>
         ))}
       </nav>

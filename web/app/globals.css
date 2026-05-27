@@ -500,6 +500,11 @@ body {
   .market-grid { grid-template-columns: 1fr !important; }
 }
 
+@media (max-width: 900px) {
+  .battle-lineup { grid-template-columns: 1fr !important; }
+  .battle-bottom { grid-template-columns: 1fr !important; }
+}
+
 @media (max-width: 540px) {
   .team-grid { grid-template-columns: 1fr !important; }
 }

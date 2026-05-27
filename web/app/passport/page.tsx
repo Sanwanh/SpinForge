@@ -15,6 +15,7 @@ import {
   Tag,
 } from '@/components/design/atoms';
 import { PACKAGE_ID, ORIGINAL_PACKAGE_ID } from '@/lib/constants';
+import { useT } from '@/lib/i18n';
 
 function usePlayerData(address: string | undefined) {
   const { data: ownedObjects, isLoading: loadingParts } = useSuiClientQuery(
@@ -472,14 +473,15 @@ export default function PassportPage() {
   const account = useCurrentAccount();
   const [refreshKey, setRefreshKey] = useState(0);
   const { profile, loadingParts } = usePlayerData(account?.address);
+  const t = useT();
 
   if (!account) {
     return (
       <>
         <PageHeader
-          eyebrow="01 / SPIN PASSPORT"
+          eyebrow={t.passport.pageEyebrow}
           title={<>Connect wallet to view your <span style={{ color: 'var(--gold)' }}>Passport.</span></>}
-          sub="連接錢包查看你的陀螺護照。"
+          sub={t.collection.connectPrompt}
           kanjiBg="證"
         />
       </>
@@ -490,9 +492,9 @@ export default function PassportPage() {
     return (
       <>
         <PageHeader
-          eyebrow="01 / SPIN PASSPORT"
+          eyebrow={t.passport.pageEyebrow}
           title={<>Welcome to <span style={{ color: 'var(--gold)' }}>SpinForge.</span></>}
-          sub="建立你的玩家檔案，領取免費新手禮包，開始鏈上陀螺之旅。"
+          sub={t.home.connectPrompt}
           kanjiBg="證"
         />
         <Section>
@@ -505,15 +507,15 @@ export default function PassportPage() {
   return (
     <>
       <PageHeader
-        eyebrow="01 / SPIN PASSPORT"
+        eyebrow={t.passport.pageEyebrow}
         title={
           <>
-            Your real-world top
+            {t.passport.pageTitleA}
             <br />
-            gets a <span style={{ color: 'var(--gold)' }}>life on-chain.</span>
+            {t.passport.pageTitleB} <span style={{ color: 'var(--gold)' }}>{t.passport.pageTitleAccent}</span>
           </>
         }
-        sub="鏈上不取代你那顆陀螺，而是幫它建立數位身分、戰績履歷、零件認證、賽事資格與獎勵。實體陀螺負責「玩」，Sui 鏈負責「證明、紀錄、交易、成長」。"
+        sub={t.passport.pageSub}
         kanjiBg="證"
       />
 

@@ -1,30 +1,35 @@
+'use client';
+
 import * as React from 'react';
 import Link from 'next/link';
 import { Logo } from '@/components/design/Logo';
 import { Stat } from '@/components/design/atoms';
-
-const PLAY = [
-  ['Gacha', '/packs'],
-  ['Battle', '/tournament'],
-  ['Forge', '/forge'],
-  ['Tournament', '/tournament'],
-] as const;
-
-const LEARN = [
-  ['Spin Passport', '/passport'],
-  ['Five Elements', '/elements'],
-  ['Cards', '/collection'],
-  ['$SPARK', '/tokenomics'],
-] as const;
-
-const COMPANY = [
-  ['Team', '/team'],
-  ['FAQ', '/faq'],
-  ['Whitepaper', '#'],
-  ['Press Kit', '#'],
-] as const;
+import { useT } from '@/lib/i18n';
 
 export function Footer() {
+  const t = useT();
+
+  const play = [
+    [t.nav.gacha,      '/packs'],
+    [t.nav.battle,     '/battle'],
+    [t.nav.forge,      '/forge'],
+    [t.nav.tournament, '/tournament'],
+  ] as const;
+
+  const learn = [
+    [t.footer.spinPassport, '/passport'],
+    [t.footer.fiveElements, '/elements'],
+    [t.nav.cards,           '/collection'],
+    [t.nav.spark,           '/tokenomics'],
+  ] as const;
+
+  const company = [
+    [t.nav.team,            '/team'],
+    [t.nav.faq,             '/faq'],
+    [t.footer.whitepaper,   '#'],
+    [t.footer.pressKit,     '#'],
+  ] as const;
+
   return (
     <footer
       style={{
@@ -58,7 +63,7 @@ export function Footer() {
         }}
       >
         <div
-          className="sf-grid"
+          className="sf-grid footer-top"
           style={{
             gridTemplateColumns: '1.4fr 1fr 1fr 1fr',
             gap: 48,
@@ -88,7 +93,7 @@ export function Footer() {
                 margin: 0,
               }}
             >
-              Real metal meets the on-chain world. SpinForge 讓每一顆現實陀螺，都變成可累積戰績的鏈上選手。
+              {t.footer.tagline}
             </p>
             <div className="sf-flex sf-gap-3" style={{ marginTop: 24 }}>
               {(
@@ -122,9 +127,9 @@ export function Footer() {
             </div>
           </div>
 
-          <FooterColumn label="Play" items={PLAY} />
-          <FooterColumn label="Learn" items={LEARN} />
-          <FooterColumn label="Company" items={COMPANY} />
+          <FooterColumn label={t.footer.play} items={play} />
+          <FooterColumn label={t.footer.learn} items={learn} />
+          <FooterColumn label={t.footer.company} items={company} />
         </div>
 
         <div
@@ -137,10 +142,10 @@ export function Footer() {
             borderBottom: '1px solid var(--border-soft)',
           }}
         >
-          <Stat label="Rotors Active" value="12,847" />
-          <Stat label="Battles · 24h" value="2,318" color="var(--blood)" />
-          <Stat label="SPARK Volume" value="184K" color="var(--gold)" />
-          <Stat label="Sui Block Height" value="287,124,901" color="var(--rare)" />
+          <Stat label={t.footer.rotorsActive} value="12,847" />
+          <Stat label={t.footer.battles24h} value="2,318" color="var(--blood)" />
+          <Stat label={t.footer.sparkVolume} value="184K" color="var(--gold)" />
+          <Stat label={t.footer.suiBlock} value="287,124,901" color="var(--rare)" />
         </div>
 
         <div
@@ -152,19 +157,19 @@ export function Footer() {
           }}
         >
           <div className="t-mono" style={{ fontSize: 11, color: 'var(--text-dim)' }}>
-            © 2026 SpinForge Labs · Built on Sui · 鑄于神州
+            {t.footer.copyright}
           </div>
           <div
             className="sf-flex sf-gap-6 t-mono"
             style={{ fontSize: 11, color: 'var(--text-dim)' }}
           >
             <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>
-              Terms
+              {t.footer.terms}
             </a>
             <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>
-              Privacy
+              {t.footer.privacy}
             </a>
-            <span style={{ color: 'var(--wood)' }}>● All systems operational</span>
+            <span style={{ color: 'var(--wood)' }}>● {t.footer.systemsOk}</span>
           </div>
         </div>
       </div>
