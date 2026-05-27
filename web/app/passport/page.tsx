@@ -358,7 +358,7 @@ function MyRotors({
             }}
           >
             {cards.map((c) => (
-              <BeyCard key={c.objectId} bey={c} />
+              <BeyCard key={c.objectId} bey={c} href={`/passport/${c.objectId}`} />
             ))}
           </div>
         </>

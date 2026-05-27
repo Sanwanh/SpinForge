@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { Beyblade } from './Beyblade';
 import { Corners } from './atoms';
 import { ELEMENT_MAP, type ElementId } from './tokens';
@@ -35,6 +36,8 @@ export interface BeyCardProps {
   lastUsed?: boolean;
   compact?: boolean;
   onClick?: () => void;
+  /** When provided, the card renders as a Next.js Link. Takes precedence over onClick. */
+  href?: string;
 }
 
 export function BeyCard({
@@ -43,6 +46,7 @@ export function BeyCard({
   lastUsed = false,
   compact = false,
   onClick,
+  href,
 }: BeyCardProps) {
   const el = elementForBey(bey.objectId);
   const meta = ELEMENT_MAP[el];
@@ -50,47 +54,44 @@ export function BeyCard({
     ? Math.round((bey.wins / (bey.wins + bey.losses)) * 100)
     : null;
 
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="bey-card"
-      style={{
-        position: 'relative',
-        textAlign: 'left',
-        padding: 16,
-        borderRadius: 14,
-        border: selected ? `1px solid ${meta.color}` : '1px solid var(--border-soft)',
-        background: selected
-          ? `linear-gradient(160deg, ${meta.color}18, var(--void) 60%, var(--abyss))`
-          : 'var(--void)',
-        boxShadow: selected
-          ? `0 0 0 1px ${meta.color}66, 0 14px 36px ${meta.glow}`
-          : '0 8px 18px rgba(0,0,0,0.2)',
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'transform 0.15s, box-shadow 0.2s, border-color 0.2s',
-        fontFamily: 'var(--f-body)',
-        color: 'var(--text)',
-        overflow: 'hidden',
-        width: '100%',
-      }}
-      onMouseOver={(e) => {
-        if (!onClick) return;
-        if (!selected) {
-          e.currentTarget.style.transform = 'translateY(-2px)';
-          e.currentTarget.style.borderColor = meta.color;
-          e.currentTarget.style.boxShadow = `0 12px 28px ${meta.glow}`;
-        }
-      }}
-      onMouseOut={(e) => {
-        if (!onClick) return;
-        if (!selected) {
-          e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.borderColor = 'var(--border-soft)';
-          e.currentTarget.style.boxShadow = '0 8px 18px rgba(0,0,0,0.2)';
-        }
-      }}
-    >
+  const interactive = !!onClick || !!href;
+  const containerStyle: React.CSSProperties = {
+    position: 'relative',
+    display: 'block',
+    textAlign: 'left',
+    padding: 16,
+    borderRadius: 14,
+    border: selected ? `1px solid ${meta.color}` : '1px solid var(--border-soft)',
+    background: selected
+      ? `linear-gradient(160deg, ${meta.color}18, var(--void) 60%, var(--abyss))`
+      : 'var(--void)',
+    boxShadow: selected
+      ? `0 0 0 1px ${meta.color}66, 0 14px 36px ${meta.glow}`
+      : '0 8px 18px rgba(0,0,0,0.2)',
+    cursor: interactive ? 'pointer' : 'default',
+    transition: 'transform 0.15s, box-shadow 0.2s, border-color 0.2s',
+    fontFamily: 'var(--f-body)',
+    color: 'var(--text)',
+    overflow: 'hidden',
+    width: '100%',
+    textDecoration: 'none',
+  };
+  const onMouseOver = (e: React.MouseEvent<HTMLElement>) => {
+    if (!interactive || selected) return;
+    e.currentTarget.style.transform = 'translateY(-2px)';
+    e.currentTarget.style.borderColor = meta.color;
+    e.currentTarget.style.boxShadow = `0 12px 28px ${meta.glow}`;
+  };
+  const onMouseOut = (e: React.MouseEvent<HTMLElement>) => {
+    if (!interactive || selected) return;
+    e.currentTarget.style.transform = 'translateY(0)';
+    e.currentTarget.style.borderColor = 'var(--border-soft)';
+    e.currentTarget.style.boxShadow = '0 8px 18px rgba(0,0,0,0.2)';
+  };
+
+  // Inner content shared between <Link>, <button>, and <div> wrappers.
+  const inner = (
+    <>
       {selected && <Corners color={meta.color} />}
 
       {/* Watermark */}
@@ -202,7 +203,40 @@ export function BeyCard({
           <Stat label="Win%"  value={winRate != null ? `${winRate}%` : '—'} color="var(--gold)" />
         </div>
       )}
-    </button>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="bey-card"
+        style={containerStyle}
+        onMouseOver={onMouseOver}
+        onMouseOut={onMouseOut}
+      >
+        {inner}
+      </Link>
+    );
+  }
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="bey-card"
+        style={containerStyle}
+        onMouseOver={onMouseOver}
+        onMouseOut={onMouseOut}
+      >
+        {inner}
+      </button>
+    );
+  }
+  return (
+    <div className="bey-card" style={containerStyle}>
+      {inner}
+    </div>
   );
 }
 
