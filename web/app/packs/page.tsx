@@ -461,15 +461,15 @@ export default function PacksPage() {
     return (
       <>
         <PageHeader
-          eyebrow="04 / GACHA · 鑄盒"
+          eyebrow={t.packs.pageEyebrow}
           title={
             <>
-              Open the pack.
+              {t.packs.pageTitle1}
               <br />
-              <span style={{ color: 'var(--gold)' }}>Forge a passport.</span>
+              <span style={{ color: 'var(--gold)' }}>{t.packs.pageTitle2}</span>
             </>
           }
-          sub="抽包後五張卡牌會依序翻牌 —— Legendary 會觸發全螢幕色彩潮汐。"
+          sub={t.packs.pageSub}
           kanjiBg="鑄"
         />
         <Section>
@@ -651,7 +651,7 @@ export default function PacksPage() {
                 animate={{ opacity: [0.5, 1, 0.5] }}
                 transition={{ duration: 2, repeat: Infinity }}
               >
-                {t.nav.home === '首頁' ? '點擊卡包開啟' : 'Tap the pack to open'}
+                {t.packs.tapToOpen}
               </motion.p>
             )}
           </div>
@@ -785,22 +785,20 @@ export default function PacksPage() {
                 className="flex flex-col items-center gap-4"
               >
                 <p className="text-sm text-gray-400">
-                  {t.nav.home === '首頁'
-                    ? `✨ 獲得了 ${cards.length} 個零件！`
-                    : `✨ Got ${cards.length} parts!`}
+                  {t.packs.gotParts.replace('{n}', String(cards.length))}
                 </p>
                 <div className="flex gap-3">
                   <button
                     onClick={() => { setPhase('idle'); setCards([]); setRevealIndex(-1); }}
                     className="btn btn-ghost"
                   >
-                    {t.nav.home === '首頁' ? '再開一包' : 'Open Another'}
+                    {t.packs.openAnother}
                   </button>
                   <a
                     href="/collection"
                     className="btn btn-primary"
                   >
-                    {t.nav.home === '首頁' ? '查看收藏庫 →' : 'View Collection →'}
+                    {t.packs.viewCollectionLink}
                   </a>
                 </div>
               </motion.div>

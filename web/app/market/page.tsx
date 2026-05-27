@@ -36,15 +36,15 @@ export default function MarketPage() {
   return (
     <>
       <PageHeader
-        eyebrow="07 / SPIRIT BAZAAR · 市"
+        eyebrow={t.market.pageEyebrow}
         title={
           <>
-            Trade rare parts.
+            {t.market.pageTitle1}
             <br />
-            <span style={{ color: 'var(--rare)' }}>Build your stable.</span>
+            <span style={{ color: 'var(--rare)' }}>{t.market.pageTitle2}</span>
           </>
         }
-        sub="稀有零件、限定卡牌、場館徽章、外觀 Skin —— Kiosk 結算，鏈上不可竄改。"
+        sub={t.market.pageSub}
         kanjiBg="市"
         accent="var(--rare)"
       />
@@ -194,7 +194,7 @@ export default function MarketPage() {
 
         <div style={{ marginTop: 80 }}>
           <SectionHead
-            eyebrow="MARKETPLACE · 設計中"
+            eyebrow={t.market.comingSoonEyebrow}
             title={t.market.comingSoon}
             sub={t.market.comingSoonDesc}
             align="center"

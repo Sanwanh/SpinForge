@@ -368,6 +368,7 @@ function MyRotors({
 }
 
 function OnboardingBanner({ address, onDone }: { address: string; onDone: () => void }) {
+  const t = useT();
   const [step, setStep] = useState<'idle' | 'creating' | 'claiming' | 'done'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -404,12 +405,10 @@ function OnboardingBanner({ address, onDone }: { address: string; onDone: () => 
     <div className="panel" style={{ padding: 28, textAlign: 'center', maxWidth: 500, margin: '0 auto' }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>🎁</div>
       <h3 className="t-h3" style={{ marginBottom: 8 }}>
-        {step === 'done' ? '歡迎加入！' : '領取新手禮包'}
+        {step === 'done' ? t.passport.onboardTitleDone : t.passport.onboardTitle}
       </h3>
       <p className="muted" style={{ fontSize: 14, marginBottom: 24 }}>
-        {step === 'done'
-          ? '你的玩家檔案已建立，500 SPARK + 5 個零件已送達！'
-          : '建立玩家檔案 + 領取 500 SPARK + 5 個免費零件'}
+        {step === 'done' ? t.passport.onboardSubDone : t.passport.onboardSub}
       </p>
       {error && <p style={{ color: 'var(--blood)', fontSize: 13, marginBottom: 12 }}>{error}</p>}
       {step !== 'done' && (
@@ -419,13 +418,13 @@ function OnboardingBanner({ address, onDone }: { address: string; onDone: () => 
           className="btn btn-primary"
           style={{ padding: '12px 32px', fontSize: 14 }}
         >
-          {step === 'idle' && '立即領取'}
-          {step === 'creating' && '建立檔案中...'}
-          {step === 'claiming' && '發送零件中...'}
+          {step === 'idle' && t.passport.onboardClaim}
+          {step === 'creating' && t.passport.onboardCreating}
+          {step === 'claiming' && t.passport.onboardClaiming}
         </button>
       )}
       {step === 'done' && (
-        <div style={{ color: 'var(--gold)', fontFamily: 'var(--f-mono)', fontSize: 13 }}>✓ 完成</div>
+        <div style={{ color: 'var(--gold)', fontFamily: 'var(--f-mono)', fontSize: 13 }}>{t.passport.onboardDone}</div>
       )}
     </div>
   );

@@ -117,6 +117,7 @@ function HeroVisual() {
 }
 
 function Hero({ ctas }: { ctas: React.ReactNode }) {
+  const t = useT();
   return (
     <section
       style={{
@@ -193,11 +194,11 @@ function Hero({ ctas }: { ctas: React.ReactNode }) {
               marginBottom: 36,
             }}
           >
-            把你手上的實體陀螺，變成一位有戰績、有徽章、有賽季履歷的鏈上選手。
+            {t.home.heroSub}
             <br />
             <br />
             <span style={{ color: 'var(--text)' }}>
-              Real metal. Real launches. Verifiable on Sui.
+              {t.home.heroSubEn}
             </span>
           </p>
 
@@ -394,6 +395,7 @@ function FeatureCard({
 }
 
 function FeatureMap() {
+  const t = useT();
   return (
     <section
       style={{
@@ -404,9 +406,9 @@ function FeatureMap() {
     >
       <div style={{ maxWidth: 1280, margin: '0 auto' }}>
         <SectionHead
-          eyebrow="THE FORGE / 神匣"
-          title="Nine systems. One spin."
-          sub="每一個系統都是一座獨立的閣樓 —— 點進去看詳細的設計與互動。"
+          eyebrow={t.home.featureEyebrow}
+          title={t.home.featureTitle}
+          sub={t.home.featureSub}
           align="center"
         />
 
@@ -512,17 +514,15 @@ function StarterPackBanner({
         style={{ gap: 24, flexWrap: 'wrap' }}
       >
         <div>
-          <Eyebrow color="var(--gold)">Starter Drop · 新手禮</Eyebrow>
+          <Eyebrow color="var(--gold)">{t.home.starterEyebrow}</Eyebrow>
           <h3
             className="t-h3"
             style={{ marginTop: 10, marginBottom: 6, fontSize: 22 }}
           >
-            {t.nav.home === '首頁' ? '領取 500 SPARK' : 'Claim 500 SPARK'}
+            {t.home.starterTitleZh}
           </h3>
           <p className="muted" style={{ fontSize: 14, margin: 0 }}>
-            {t.nav.home === '首頁'
-              ? '免費獲得 500 SPARK — 可以開 5 個卡包。'
-              : 'Get 500 SPARK for free — enough to crack 5 packs.'}
+            {t.home.starterSubZh}
           </p>
         </div>
         <button
@@ -530,11 +530,7 @@ function StarterPackBanner({
           disabled={claiming}
           className="btn btn-primary"
         >
-          {claiming
-            ? t.common.loading
-            : t.nav.home === '首頁'
-              ? '立即領取'
-              : 'Claim Now'}
+          {claiming ? t.common.loading : t.home.starterClaim}
         </button>
       </div>
       {error && (
@@ -569,7 +565,7 @@ function DashboardStrip() {
       }}
     >
       <div className="sf-flex sf-items-center" style={{ gap: 16, marginBottom: 28 }}>
-        <Eyebrow>Forge Operator · 鑄者</Eyebrow>
+        <Eyebrow>{t.home.forgeOperator}</Eyebrow>
         <div
           className="t-mono"
           style={{ fontSize: 12, color: 'var(--text-mute)' }}

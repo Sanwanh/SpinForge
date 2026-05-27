@@ -41,15 +41,15 @@ export default function CollectionPage() {
     return (
       <>
         <PageHeader
-          eyebrow="03 / CARDS · 卡片"
+          eyebrow={t.collection.pageEyebrowEmpty}
           title={
             <>
-              Four tiers.
+              {t.collection.pageTitleEmpty}
               <br />
-              One forge.
+              {t.collection.pageTitleEmptyAccent}
             </>
           }
-          sub="從一片素材到鎮殿傳說，每張卡的稀有度都有獨立的視覺語言。"
+          sub={t.collection.pageSubEmpty}
           kanjiBg="卡"
           accent="var(--epic)"
         />
@@ -78,14 +78,13 @@ export default function CollectionPage() {
   return (
     <>
       <PageHeader
-        eyebrow="03 / YOUR COLLECTION"
+        eyebrow={t.collection.pageEyebrowOwned}
         title={
-          <>
-            {allParts.length}{' '}
-            <span style={{ color: 'var(--epic)' }}>parts forged.</span>
-          </>
+          <span style={{ color: 'var(--epic)' }}>
+            {t.collection.partsForged.replace('{n}', String(allParts.length))}
+          </span>
         }
-        sub="每張卡都是一個 Sui Object —— 它的稀有度、屬性、來歷都活在鏈上。"
+        sub={t.collection.pageSubOwned}
         kanjiBg="卡"
         accent="var(--epic)"
       />
@@ -96,10 +95,10 @@ export default function CollectionPage() {
           style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}
         >
           {[
-            { label: 'Total Parts', value: String(allParts.length), color: 'var(--gold)' },
-            { label: 'Blades', value: String(blades.length), color: 'var(--fire)' },
-            { label: 'Ratchets', value: String(ratchets.length), color: 'var(--rare)' },
-            { label: 'Bits', value: String(bits.length), color: 'var(--wood)' },
+            { label: t.collection.totalParts, value: String(allParts.length), color: 'var(--gold)' },
+            { label: t.workshop.blade,        value: String(blades.length),   color: 'var(--fire)' },
+            { label: t.workshop.ratchet,      value: String(ratchets.length), color: 'var(--rare)' },
+            { label: t.workshop.bit,          value: String(bits.length),     color: 'var(--wood)' },
           ].map((s) => (
             <div key={s.label} className="panel" style={{ padding: 18 }}>
               <Stat label={s.label} value={s.value} color={s.color} />
