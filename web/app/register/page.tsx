@@ -1,5 +1,6 @@
 'use client';
 
+import * as React from 'react';
 import { useState, useCallback } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { PageHeader, Section, Tag, Corners } from '@/components/design/atoms';
@@ -40,10 +41,10 @@ interface SpiritBeast {
 }
 
 const SPIRIT_BEASTS: SpiritBeast[] = [
-  { id: 0, zh: '青龍',   en: 'Azure Dragon',   kanji: '龍', color: 'var(--wood)' },
-  { id: 1, zh: '朱雀',   en: 'Vermilion Bird', kanji: '鳳', color: 'var(--fire)' },
-  { id: 2, zh: '白虎',   en: 'White Tiger',    kanji: '虎', color: 'var(--metal)' },
-  { id: 3, zh: '玄武',   en: 'Black Tortoise', kanji: '龜', color: 'var(--water)' },
+  { id: 0, zh: '青龍', en: 'Azure Dragon',   kanji: '龍', color: 'var(--wood)' },
+  { id: 1, zh: '朱雀', en: 'Vermilion Bird', kanji: '鳳', color: 'var(--fire)' },
+  { id: 2, zh: '白虎', en: 'White Tiger',    kanji: '虎', color: 'var(--metal)' },
+  { id: 3, zh: '玄武', en: 'Black Tortoise', kanji: '龜', color: 'var(--water)' },
 ];
 
 interface BeyTypeOpt {
@@ -61,39 +62,178 @@ const BEY_TYPES: BeyTypeOpt[] = [
   { id: 3, zh: '平衡', en: 'Balance', short: 'BAL', color: 'var(--gold)'  },
 ];
 
-// Common inline styles
-const SELECT_STYLE: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 14px',
-  borderRadius: 8,
-  background: 'var(--void)',
-  border: '1px solid var(--border)',
-  color: 'var(--text)',
-  fontFamily: 'var(--f-ui)',
-  fontSize: 14,
-  cursor: 'pointer',
-  outline: 'none',
-};
+/**
+ * Single source-of-truth chip control. Bypasses the global `.btn` class
+ * entirely so padding/letterspacing/text-transform don't fight us.
+ */
+function Chip({
+  active,
+  onClick,
+  accent = 'var(--gold)',
+  height = 40,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  accent?: string;
+  height?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: '100%',
+        height,
+        padding: '0 10px',
+        borderRadius: 8,
+        background: active
+          ? `linear-gradient(180deg, ${accent}, color-mix(in srgb, ${accent} 80%, #000))`
+          : 'var(--void)',
+        border: active ? `1px solid ${accent}` : '1px solid var(--border)',
+        color: active ? 'var(--abyss)' : 'var(--text)',
+        fontFamily: 'var(--f-ui)',
+        fontWeight: 700,
+        fontSize: 13,
+        letterSpacing: 0,
+        textTransform: 'none',
+        cursor: 'pointer',
+        boxShadow: active ? `0 0 18px ${accent}55, inset 0 1px 0 rgba(255,255,255,0.25)` : 'none',
+        transition: 'background 0.15s, border-color 0.15s, box-shadow 0.2s, transform 0.1s',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      }}
+      onMouseOver={(e) => {
+        if (!active) e.currentTarget.style.borderColor = accent;
+      }}
+      onMouseOut={(e) => {
+        if (!active) e.currentTarget.style.borderColor = 'var(--border)';
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
-const CHIP_BTN_BASE: React.CSSProperties = {
-  padding: '7px 12px',
-  fontSize: 12,
-  minWidth: 0,
-  whiteSpace: 'nowrap',
-  letterSpacing: 0,
-  textTransform: 'none',
-};
+/** Larger 2-line chip for Spirit Beast (kanji + name). */
+function BeastChip({
+  active,
+  onClick,
+  beast,
+  isZh,
+}: {
+  active: boolean;
+  onClick: () => void;
+  beast: SpiritBeast;
+  isZh: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: '100%',
+        padding: '8px 6px',
+        borderRadius: 10,
+        background: active
+          ? `linear-gradient(180deg, ${beast.color}28, var(--void))`
+          : 'var(--void)',
+        border: active ? `1px solid ${beast.color}` : '1px solid var(--border)',
+        color: 'var(--text)',
+        cursor: 'pointer',
+        boxShadow: active ? `0 0 18px ${beast.color}55` : 'none',
+        transition: 'background 0.15s, border-color 0.15s, box-shadow 0.2s',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 2,
+        height: 64,
+      }}
+      onMouseOver={(e) => {
+        if (!active) e.currentTarget.style.borderColor = beast.color;
+      }}
+      onMouseOut={(e) => {
+        if (!active) e.currentTarget.style.borderColor = 'var(--border)';
+      }}
+    >
+      <span
+        style={{
+          fontFamily: 'var(--f-han)',
+          fontWeight: 900,
+          fontSize: 22,
+          color: beast.color,
+          lineHeight: 1,
+        }}
+      >
+        {beast.kanji}
+      </span>
+      <span
+        style={{
+          fontSize: 10,
+          letterSpacing: '0.04em',
+          color: active ? beast.color : 'var(--text-mute)',
+          lineHeight: 1,
+          fontWeight: 600,
+        }}
+      >
+        {isZh ? beast.zh : beast.en}
+      </span>
+    </button>
+  );
+}
 
-const CHIP_NUM: React.CSSProperties = {
-  ...CHIP_BTN_BASE,
-  padding: '7px 0',
-  minWidth: 40,
-  width: 40,
-  textAlign: 'center',
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="t-mono"
+      style={{
+        fontSize: 10,
+        color: 'var(--text-dim)',
+        letterSpacing: '0.1em',
+        marginBottom: 8,
+        textTransform: 'uppercase',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SectionEyebrow({
+  step,
+  color,
+  zh,
+  en,
+  isZh,
+}: {
+  step: string;
+  color: string;
+  zh: string;
+  en: string;
+  isZh: boolean;
+}) {
+  return (
+    <div
+      className="t-mono"
+      style={{
+        color,
+        marginBottom: 16,
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: '0.16em',
+        textTransform: 'uppercase',
+      }}
+    >
+      {step} · {isZh ? `${zh} · ${en}` : `${en} · ${zh}`}
+    </div>
+  );
+}
 
 export default function RegisterPage() {
   const account = useCurrentAccount();
@@ -148,14 +288,12 @@ export default function RegisterPage() {
   // ─── Empty state ───
   if (!account) {
     return (
-      <>
-        <PageHeader
-          eyebrow={isZh ? '註冊陀螺 · REGISTER ROTOR' : 'REGISTER ROTOR · 註冊陀螺'}
-          title={<>{isZh ? '連接錢包以註冊你的陀螺' : 'Connect wallet to register your top'}</>}
-          sub={isZh ? '把你手上的實體陀螺鑄到 Sui 鏈上。' : 'Mint your physical Beyblade to Sui.'}
-          kanjiBg="鑄"
-        />
-      </>
+      <PageHeader
+        eyebrow={isZh ? '註冊陀螺 · REGISTER ROTOR' : 'REGISTER ROTOR · 註冊陀螺'}
+        title={<>{isZh ? '連接錢包以註冊你的陀螺' : 'Connect wallet to register your top'}</>}
+        sub={isZh ? '把你手上的實體陀螺鑄到 Sui 鏈上。' : 'Mint your physical Beyblade to Sui.'}
+        kanjiBg="鑄"
+      />
     );
   }
 
@@ -207,19 +345,18 @@ export default function RegisterPage() {
   // ─── Main form ───
   const selectedSpirit = SPIRIT_BEASTS[spirit];
   const selectedType = BEY_TYPES[beyType];
+  const hasBlade = blade.length > 0;
 
   return (
     <>
       <PageHeader
         eyebrow={isZh ? '註冊陀螺 · REGISTER ROTOR' : 'REGISTER ROTOR · 註冊陀螺'}
         title={
-          <>
-            {isZh ? (
-              <>把你的<span style={{ color: 'var(--gold)' }}>實體陀螺</span>鑄到鏈上</>
-            ) : (
-              <>Register your <span style={{ color: 'var(--gold)' }}>real Beyblade</span> on-chain</>
-            )}
-          </>
+          isZh ? (
+            <>把你的<span style={{ color: 'var(--gold)' }}>實體陀螺</span>鑄到鏈上</>
+          ) : (
+            <>Register your <span style={{ color: 'var(--gold)' }}>real Beyblade</span> on-chain</>
+          )
         }
         sub={isZh
           ? '輸入你手上的實體陀螺零件組合，系統會在 Sui 上鑄造對應的鏈上物件。從此這顆陀螺的所有對戰紀錄都會永久寫入。'
@@ -231,183 +368,158 @@ export default function RegisterPage() {
         <div style={{ maxWidth: 680, margin: '0 auto', display: 'grid', gap: 16 }}>
           {/* ─── BLADE ─── */}
           <div className="panel" style={{ padding: 24 }}>
-            <div className="t-eyebrow" style={{ color: 'var(--fire)', marginBottom: 14 }}>
-              01 · {isZh ? '刃片 · BLADE' : 'BLADE · 刃片'}
-            </div>
+            <SectionEyebrow
+              step="01"
+              color="var(--fire)"
+              zh="刃片"
+              en="BLADE"
+              isZh={isZh}
+            />
 
-            <label
-              className="t-mono"
-              style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.1em', display: 'block', marginBottom: 6 }}
+            <FieldLabel>{isZh ? '型號' : 'Model'}</FieldLabel>
+            <select
+              value={blade}
+              onChange={(e) => setBlade(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 8,
+                background: 'var(--void)',
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+                fontFamily: 'var(--f-ui)',
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: 'pointer',
+                outline: 'none',
+                marginBottom: 18,
+              }}
             >
-              {isZh ? '型號' : 'Model'}
-            </label>
-            <select value={blade} onChange={(e) => setBlade(e.target.value)} style={SELECT_STYLE}>
               <option value="">{isZh ? '── 選擇你的 Blade ──' : '── Select your Blade ──'}</option>
               {REAL_BLADES.map((b) => (
                 <option key={b} value={b}>{b}</option>
               ))}
             </select>
 
-            {/* Spirit Beast */}
-            <div style={{ marginTop: 18 }}>
-              <div
-                className="t-mono"
-                style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.1em', marginBottom: 8 }}
-              >
-                {isZh ? '靈獸' : 'Spirit Beast'}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                {SPIRIT_BEASTS.map((s) => {
-                  const active = spirit === s.id;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => setSpirit(s.id)}
-                      className={active ? 'btn btn-primary' : 'btn btn-ghost'}
-                      style={{
-                        ...CHIP_BTN_BASE,
-                        padding: '10px 4px',
-                        flexDirection: 'column',
-                        gap: 2,
-                        lineHeight: 1.1,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontFamily: 'var(--f-han)',
-                          fontSize: 18,
-                          color: active ? 'var(--abyss)' : s.color,
-                        }}
-                      >
-                        {s.kanji}
-                      </span>
-                      <span style={{ fontSize: 10, opacity: 0.85 }}>
-                        {isZh ? s.zh : s.en}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+            <FieldLabel>{isZh ? '靈獸' : 'Spirit Beast'}</FieldLabel>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: 8,
+                marginBottom: 16,
+              }}
+            >
+              {SPIRIT_BEASTS.map((s) => (
+                <BeastChip
+                  key={s.id}
+                  beast={s}
+                  active={spirit === s.id}
+                  isZh={isZh}
+                  onClick={() => setSpirit(s.id)}
+                />
+              ))}
             </div>
 
-            {/* Type */}
-            <div style={{ marginTop: 16 }}>
-              <div
-                className="t-mono"
-                style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.1em', marginBottom: 8 }}
-              >
-                {isZh ? '類型' : 'Type'}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                {BEY_TYPES.map((bt) => {
-                  const active = beyType === bt.id;
-                  return (
-                    <button
-                      key={bt.id}
-                      onClick={() => setBeyType(bt.id)}
-                      className={active ? 'btn btn-primary' : 'btn btn-ghost'}
-                      style={{ ...CHIP_BTN_BASE, padding: '8px 0' }}
-                    >
-                      {isZh ? bt.zh : bt.short}
-                    </button>
-                  );
-                })}
-              </div>
+            <FieldLabel>{isZh ? '類型' : 'Type'}</FieldLabel>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: 8,
+                marginBottom: 16,
+              }}
+            >
+              {BEY_TYPES.map((bt) => (
+                <Chip
+                  key={bt.id}
+                  active={beyType === bt.id}
+                  accent={bt.color}
+                  onClick={() => setBeyType(bt.id)}
+                >
+                  {isZh ? bt.zh : bt.short}
+                </Chip>
+              ))}
             </div>
 
-            {/* Spin */}
-            <div style={{ marginTop: 16 }}>
-              <div
-                className="t-mono"
-                style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.1em', marginBottom: 8 }}
-              >
-                {isZh ? '旋轉方向' : 'Spin Direction'}
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => setSpin(0)}
-                  className={spin === 0 ? 'btn btn-primary' : 'btn btn-ghost'}
-                  style={{ ...CHIP_BTN_BASE, padding: '8px 16px' }}
-                >
-                  → {isZh ? '右旋' : 'Right'}
-                </button>
-                <button
-                  onClick={() => setSpin(1)}
-                  className={spin === 1 ? 'btn btn-primary' : 'btn btn-ghost'}
-                  style={{ ...CHIP_BTN_BASE, padding: '8px 16px' }}
-                >
-                  ← {isZh ? '左旋' : 'Left'}
-                </button>
-              </div>
+            <FieldLabel>{isZh ? '旋轉方向' : 'Spin Direction'}</FieldLabel>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: 8,
+              }}
+            >
+              <Chip active={spin === 0} onClick={() => setSpin(0)}>
+                → {isZh ? '右旋' : 'Right'}
+              </Chip>
+              <Chip active={spin === 1} onClick={() => setSpin(1)}>
+                ← {isZh ? '左旋' : 'Left'}
+              </Chip>
             </div>
           </div>
 
           {/* ─── RATCHET ─── */}
           <div className="panel" style={{ padding: 24 }}>
-            <div className="t-eyebrow" style={{ color: 'var(--water)', marginBottom: 14 }}>
-              02 · {isZh ? '棘齒 · RATCHET' : 'RATCHET · 棘齒'}
-            </div>
+            <SectionEyebrow
+              step="02"
+              color="var(--water)"
+              zh="棘齒"
+              en="RATCHET"
+              isZh={isZh}
+            />
 
-            <div
-              className="t-mono"
-              style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.1em', marginBottom: 8 }}
-            >
-              {isZh ? '齒數 (Prongs)' : 'Prongs'}
-            </div>
+            <FieldLabel>{isZh ? '齒數 Prongs' : 'Prongs'}</FieldLabel>
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(40px, 1fr))',
+                gridTemplateColumns: 'repeat(10, 1fr)',
                 gap: 6,
                 marginBottom: 16,
               }}
             >
               {PRONGS.map((p) => (
-                <button
+                <Chip
                   key={p}
+                  active={prong === p}
+                  height={36}
                   onClick={() => setProng(p)}
-                  className={prong === p ? 'btn btn-primary' : 'btn btn-ghost'}
-                  style={CHIP_NUM}
                 >
                   {p}
-                </button>
+                </Chip>
               ))}
             </div>
 
-            <div
-              className="t-mono"
-              style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.1em', marginBottom: 8 }}
-            >
-              {isZh ? '高度 (Height, mm)' : 'Height (mm)'}
-            </div>
+            <FieldLabel>{isZh ? '高度 Height (mm)' : 'Height (mm)'}</FieldLabel>
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(48px, 1fr))',
+                gridTemplateColumns: 'repeat(6, 1fr)',
                 gap: 6,
               }}
             >
               {HEIGHTS.map((h) => (
-                <button
+                <Chip
                   key={h}
+                  active={height === h}
+                  height={36}
                   onClick={() => setHeight(h)}
-                  className={height === h ? 'btn btn-primary' : 'btn btn-ghost'}
-                  style={{ ...CHIP_NUM, minWidth: 48, width: 'auto' }}
                 >
                   {h}
-                </button>
+                </Chip>
               ))}
             </div>
 
             <div
               className="t-mono"
               style={{
-                marginTop: 14,
+                marginTop: 16,
                 paddingTop: 14,
                 borderTop: '1px solid var(--border-soft)',
                 fontSize: 22,
                 color: 'var(--gold)',
                 letterSpacing: '0.04em',
+                fontWeight: 700,
               }}
             >
               {prong}-{height}
@@ -416,25 +528,28 @@ export default function RegisterPage() {
 
           {/* ─── BIT ─── */}
           <div className="panel" style={{ padding: 24 }}>
-            <div className="t-eyebrow" style={{ color: 'var(--wood)', marginBottom: 14 }}>
-              03 · {isZh ? '底軸 · BIT' : 'BIT · 底軸'}
-            </div>
+            <SectionEyebrow
+              step="03"
+              color="var(--wood)"
+              zh="底軸"
+              en="BIT"
+              isZh={isZh}
+            />
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))',
-                gap: 6,
+                gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+                gap: 8,
               }}
             >
               {REAL_BITS.map((b) => (
-                <button
+                <Chip
                   key={b.name}
+                  active={bit === b.name}
                   onClick={() => { setBit(b.name); setBitCat(b.category); }}
-                  className={bit === b.name ? 'btn btn-primary' : 'btn btn-ghost'}
-                  style={CHIP_BTN_BASE}
                 >
                   {b.name}
-                </button>
+                </Chip>
               ))}
             </div>
           </div>
@@ -444,28 +559,61 @@ export default function RegisterPage() {
             className="panel"
             style={{
               padding: 24,
-              border: blade ? '1px solid var(--gold)' : '1px solid var(--border)',
-              boxShadow: blade ? '0 0 32px rgba(212,175,55,0.1)' : undefined,
+              border: hasBlade ? '1px solid var(--gold)' : '1px solid var(--border-soft)',
+              boxShadow: hasBlade ? '0 0 32px rgba(212,175,55,0.1)' : undefined,
               transition: 'box-shadow 0.2s, border-color 0.2s',
             }}
           >
-            <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 12 }}>
+            <div
+              className="t-mono"
+              style={{
+                color: 'var(--gold)',
+                marginBottom: 14,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.16em',
+                textTransform: 'uppercase',
+              }}
+            >
               {isZh ? '你的陀螺 · YOUR ROTOR' : 'YOUR ROTOR · 你的陀螺'}
             </div>
-            <div className="t-h3" style={{ marginBottom: 8, wordBreak: 'break-word' }}>
-              {blade || (isZh ? '（請先選擇 Blade）' : '(Select a Blade first)')} {prong}-{height} {bit}
-            </div>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
-              <Tag color={selectedSpirit.color}>
-                {selectedSpirit.kanji} {isZh ? selectedSpirit.zh : selectedSpirit.en}
-              </Tag>
-              <Tag color={selectedType.color}>
-                {isZh ? selectedType.zh : selectedType.en}
-              </Tag>
-              <Tag color="var(--text-mute)">
-                {spin === 0 ? `→ ${isZh ? '右旋' : 'Right'}` : `← ${isZh ? '左旋' : 'Left'}`}
-              </Tag>
-            </div>
+
+            {hasBlade ? (
+              <>
+                <div
+                  className="t-h3"
+                  style={{ marginBottom: 8, wordBreak: 'break-word', lineHeight: 1.2 }}
+                >
+                  {blade} <span style={{ color: 'var(--gold)' }}>{prong}-{height}</span> {bit}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
+                  <Tag color={selectedSpirit.color}>
+                    {selectedSpirit.kanji} {isZh ? selectedSpirit.zh : selectedSpirit.en}
+                  </Tag>
+                  <Tag color={selectedType.color}>
+                    {isZh ? selectedType.zh : selectedType.en}
+                  </Tag>
+                  <Tag color="var(--text-mute)">
+                    {spin === 0 ? `→ ${isZh ? '右旋' : 'Right'}` : `← ${isZh ? '左旋' : 'Left'}`}
+                  </Tag>
+                </div>
+              </>
+            ) : (
+              <div
+                className="muted"
+                style={{
+                  fontSize: 14,
+                  padding: '20px 0',
+                  marginBottom: 12,
+                  textAlign: 'center',
+                  borderRadius: 8,
+                  border: '1px dashed var(--border-soft)',
+                  background: 'rgba(255,255,255,0.02)',
+                }}
+              >
+                {isZh ? '請先在上方選擇一個 Blade' : 'Pick a Blade above to preview'}
+              </div>
+            )}
 
             {error && (
               <p
@@ -486,9 +634,14 @@ export default function RegisterPage() {
 
             <button
               onClick={handleRegister}
-              disabled={!blade || status === 'registering'}
+              disabled={!hasBlade || status === 'registering'}
               className="btn btn-primary"
-              style={{ width: '100%', padding: '14px 0', fontSize: 14 }}
+              style={{
+                width: '100%',
+                padding: '14px 0',
+                fontSize: 14,
+                justifyContent: 'center',
+              }}
             >
               {status === 'registering'
                 ? (isZh ? '鑄造中…' : 'Minting…')
