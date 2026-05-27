@@ -1,570 +1,330 @@
 'use client';
 
-import * as React from 'react';
-import Link from 'next/link';
-import { Beyblade } from '@/components/design/Beyblade';
-import {
-  Corners,
-  Eyebrow,
-  PageHeader,
-  Section,
-  Tag,
-} from '@/components/design/atoms';
-import { ELEMENT_MAP, type ElementId } from '@/components/design/tokens';
+import { useState, useCallback, useEffect } from 'react';
+import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useInventory } from '@/hooks/useInventory';
+import { PageHeader, Section, Tag, Corners, Stat } from '@/components/design/atoms';
 import { useT } from '@/lib/i18n';
 
-function LaunchMeter() {
-  const t = useT();
-  const [power, setPower] = React.useState(0);
-  const [locked, setLocked] = React.useState<number | null>(null);
-  const dirRef = React.useRef(1);
+type Phase = 'create' | 'waiting' | 'select' | 'battle' | 'submit' | 'confirmed' | 'done';
 
-  React.useEffect(() => {
-    if (locked !== null) return;
-    const id = setInterval(() => {
-      setPower((p) => {
-        let next = p + dirRef.current * 2.4;
-        if (next >= 100) { next = 100; dirRef.current = -1; }
-        if (next <= 0) { next = 0; dirRef.current = 1; }
-        return next;
-      });
-    }, 16);
-    return () => clearInterval(id);
-  }, [locked]);
-
-  const zoneColor = (p: number) =>
-    p < 30 ? 'var(--text-mute)'
-    : p < 55 ? 'var(--rare)'
-    : p < 75 ? 'var(--earth)'
-    : p < 88 ? 'var(--wood)'
-    : p < 95 ? 'var(--gold)'
-    :          'var(--blood)';
-
-  const verdict = (p: number) =>
-      p < 30 ? { label: t.battle.weak,     color: 'var(--text-mute)' }
-    : p < 55 ? { label: t.battle.average,  color: 'var(--rare)' }
-    : p < 75 ? { label: t.battle.strong,   color: 'var(--earth)' }
-    : p < 88 ? { label: t.battle.great,    color: 'var(--wood)' }
-    : p < 95 ? { label: t.battle.perfect,  color: 'var(--gold)' }
-    :          { label: t.battle.overload, color: 'var(--blood)' };
-
-  const displayed = locked ?? power;
-  const am = displayed / 50;
-  const v = verdict(displayed);
-
-  return (
-    <div
-      className="panel"
-      style={{ padding: 36, position: 'relative', overflow: 'hidden' }}
-    >
-      <Corners color={v.color} />
-      <div
-        className="sf-flex sf-justify-between sf-items-center"
-        style={{ marginBottom: 28 }}
-      >
-        <div>
-          <Eyebrow>{t.battle.launchMeterTitle}</Eyebrow>
-          <div
-            className="t-h3"
-            style={{ marginTop: 6, fontSize: 28 }}
-          >
-            {t.battle.launchMeterSub}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div className="t-eyebrow" style={{ fontSize: 9 }}>
-            {t.battle.angularMomentumLabel}
-          </div>
-          <div
-            className="t-mono"
-            style={{
-              fontSize: 40,
-              color: v.color,
-              fontWeight: 700,
-              lineHeight: 1,
-              marginTop: 4,
-            }}
-          >
-            ×{am.toFixed(2)}
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          position: 'relative',
-          height: 64,
-          borderRadius: 8,
-          background: 'var(--abyss)',
-          border: '1px solid var(--border-soft)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: `linear-gradient(90deg,
-              var(--text-mute) 0%, var(--text-mute) 30%,
-              var(--rare) 30%, var(--rare) 55%,
-              var(--earth) 55%, var(--earth) 75%,
-              var(--wood) 75%, var(--wood) 88%,
-              var(--gold) 88%, var(--gold) 95%,
-              var(--blood) 95%, var(--blood) 100%)`,
-            opacity: 0.12,
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: `${displayed}%`,
-            background: `linear-gradient(90deg, transparent, ${zoneColor(displayed)})`,
-            transition: locked !== null ? 'width 0.2s' : 'none',
-            boxShadow: `inset 0 0 24px ${zoneColor(displayed)}44`,
-          }}
-        />
-        {[30, 55, 75, 88, 95].map((t) => (
-          <div
-            key={t}
-            style={{
-              position: 'absolute',
-              left: `${t}%`,
-              top: 0,
-              bottom: 0,
-              width: 1,
-              background: 'rgba(255,255,255,0.2)',
-            }}
-          />
-        ))}
-        <div
-          style={{
-            position: 'absolute',
-            top: 8,
-            left: '88%',
-            fontFamily: 'var(--f-mono)',
-            fontSize: 9,
-            color: 'var(--gold)',
-            letterSpacing: '0.12em',
-            fontWeight: 700,
-          }}
-        >
-          SWEET
-        </div>
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'grid',
-            placeItems: 'center',
-            fontFamily: 'var(--f-mono)',
-            fontSize: 28,
-            fontWeight: 700,
-            color: '#fff',
-            textShadow: '0 0 12px rgba(0,0,0,0.8)',
-          }}
-        >
-          {Math.round(displayed)}
-        </div>
-      </div>
-
-      <div
-        className="sf-flex sf-justify-between"
-        style={{
-          marginTop: 8,
-          fontFamily: 'var(--f-mono)',
-          fontSize: 9,
-          color: 'var(--text-dim)',
-        }}
-      >
-        <span>0</span>
-        <span>30</span>
-        <span>55</span>
-        <span>75</span>
-        <span>88</span>
-        <span>95</span>
-        <span>100</span>
-      </div>
-
-      <div
-        className="sf-flex sf-justify-between sf-items-center"
-        style={{ marginTop: 28 }}
-      >
-        <div>
-          <div className="t-eyebrow" style={{ fontSize: 10 }}>
-            {t.battle.resultLabel}
-          </div>
-          <div
-            style={{
-              fontFamily: 'var(--f-display)',
-              fontWeight: 700,
-              fontSize: 36,
-              color: v.color,
-              lineHeight: 1,
-              marginTop: 6,
-              textShadow: locked !== null ? `0 0 24px ${v.color}88` : 'none',
-            }}
-          >
-            {v.label}
-          </div>
-        </div>
-        <div>
-          {locked === null ? (
-            <button className="btn btn-battle" onClick={() => setLocked(power)}>
-              {t.battle.lockAndLaunch}
-            </button>
-          ) : (
-            <button className="btn btn-ghost" onClick={() => setLocked(null)}>
-              {t.battle.reset}
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div
-        style={{
-          marginTop: 24,
-          paddingTop: 18,
-          borderTop: '1px solid var(--border-soft)',
-          fontFamily: 'var(--f-mono)',
-          fontSize: 11,
-          color: 'var(--text-dim)',
-          lineHeight: 1.6,
-        }}
-      >
-        <span style={{ color: 'var(--gold)' }}>→</span> {t.battle.helperPower}
-        <br />
-        <span style={{ color: 'var(--gold)' }}>→</span> {t.battle.helperPerfect}
-        <br />
-        <span style={{ color: 'var(--gold)' }}>→</span> {t.battle.helperLong}
-      </div>
-    </div>
-  );
+interface RoomData {
+  id: string;
+  creator: string;
+  opponent: string | null;
+  creatorRotor: string | null;
+  opponentRotor: string | null;
+  status: string;
+  result: { winner: string; finishType: number; scoreA: number; scoreB: number } | null;
 }
 
-interface TeamSlotProps {
-  rotor: string;
-  el: ElementId;
-  name: string;
-  code: string;
-  role: string;
-  spinSpeed?: number;
-}
-
-function TeamSlot({ rotor, el, name, code, role, spinSpeed = 1 }: TeamSlotProps) {
-  const v = ELEMENT_MAP[el];
-  return (
-    <div
-      className="panel"
-      style={{
-        padding: 18,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        border: `1px solid ${v.color}33`,
-      }}
-    >
-      <div style={{ flexShrink: 0 }}>
-        <Beyblade size={92} element={el} spinSpeed={spinSpeed} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          className="t-mono"
-          style={{
-            fontSize: 10,
-            color: v.color,
-            letterSpacing: '0.1em',
-          }}
-        >
-          {role} · {rotor}
-        </div>
-        <div
-          style={{
-            fontFamily: 'var(--f-ui)',
-            fontWeight: 800,
-            fontSize: 18,
-            marginTop: 4,
-            lineHeight: 1.1,
-          }}
-        >
-          {name}
-        </div>
-        <div
-          className="t-mono"
-          style={{
-            fontSize: 11,
-            color: 'var(--text-dim)',
-            marginTop: 4,
-          }}
-        >
-          {code}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function VS() {
-  return (
-    <div
-      style={{
-        width: 96,
-        height: 96,
-        borderRadius: '50%',
-        border: '1px solid var(--gold)',
-        display: 'grid',
-        placeItems: 'center',
-        background: 'radial-gradient(circle, rgba(212,175,55,0.2), transparent)',
-        boxShadow: '0 0 28px rgba(212,175,55,0.3)',
-      }}
-    >
-      <span
-        style={{
-          fontFamily: 'var(--f-display)',
-          fontWeight: 700,
-          fontSize: 32,
-          color: 'var(--gold)',
-        }}
-      >
-        VS
-      </span>
-    </div>
-  );
-}
+const FINISH_LABELS: Record<number, string> = {
+  0: 'Spin Finish (1pt)',
+  1: 'Over Finish (2pt)',
+  2: 'Burst Finish (2pt)',
+  3: 'Xtreme Finish (3pt)',
+};
 
 export default function BattlePage() {
+  const account = useCurrentAccount();
+  const { beys } = useInventory();
   const t = useT();
-  const winConditions = [
-    { kanji: '停', en: t.battle.spinFinishLabel,  desc: t.battle.spinFinishDesc,  color: 'var(--rare)',  pts: '+1' },
-    { kanji: '界', en: t.battle.ringOutLabel,     desc: t.battle.ringOutDesc,     color: 'var(--earth)', pts: '+2' },
-    { kanji: '爆', en: t.battle.burstFinishLabel, desc: t.battle.burstFinishDesc, color: 'var(--blood)', pts: '+3' },
-  ];
+  const isZh = t.nav.home === '首頁';
+
+  const [phase, setPhase] = useState<Phase>('create');
+  const [roomId, setRoomId] = useState('');
+  const [joinCode, setJoinCode] = useState('');
+  const [room, setRoom] = useState<RoomData | null>(null);
+  const [selectedRotor, setSelectedRotor] = useState('');
+  const [winner, setWinner] = useState('');
+  const [finishType, setFinishType] = useState(0);
+  const [scoreA, setScoreA] = useState(7);
+  const [scoreB, setScoreB] = useState(0);
+  const [error, setError] = useState('');
+  const [onChainId, setOnChainId] = useState('');
+
+  const api = useCallback(async (body: Record<string, unknown>) => {
+    const res = await fetch('/api/battle-room', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  }, []);
+
+  const handleCreate = useCallback(async () => {
+    if (!account) return;
+    const data = await api({ action: 'create', creator: account.address });
+    if (data.roomId) {
+      setRoomId(data.roomId);
+      setRoom(data.room);
+      setPhase('waiting');
+    }
+  }, [account, api]);
+
+  const handleJoin = useCallback(async () => {
+    if (!account || !joinCode) return;
+    const data = await api({ action: 'join', roomId: joinCode, opponent: account.address });
+    if (data.success) {
+      setRoomId(joinCode);
+      setRoom(data.room);
+      setPhase('select');
+    } else {
+      setError(data.error);
+    }
+  }, [account, joinCode, api]);
+
+  const handleSelectRotor = useCallback(async () => {
+    if (!account || !selectedRotor) return;
+    const data = await api({ action: 'select-rotor', roomId, player: account.address, rotorId: selectedRotor });
+    if (data.success) {
+      setRoom(data.room);
+      if (data.room.status === 'in_progress') setPhase('battle');
+    }
+  }, [account, selectedRotor, roomId, api]);
+
+  const handleSubmitResult = useCallback(async () => {
+    if (!account || !winner) return;
+    const data = await api({
+      action: 'submit-result', roomId, submitter: account.address,
+      winner, finishType, scoreA, scoreB,
+    });
+    if (data.success) { setRoom(data.room); setPhase('submit'); }
+  }, [account, roomId, winner, finishType, scoreA, scoreB, api]);
+
+  const handleConfirm = useCallback(async () => {
+    if (!account) return;
+    await api({ action: 'confirm-result', roomId, confirmer: account.address });
+
+    // Commit to chain
+    const res = await fetch('/api/submit-result', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerA: room?.creator,
+        playerB: room?.opponent,
+        rotorA: room?.creatorRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
+        rotorB: room?.opponentRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
+        winner, finishType, scoreA, scoreB,
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setOnChainId(data.recordId);
+      setPhase('done');
+    } else {
+      setError(data.error);
+    }
+  }, [account, roomId, room, winner, finishType, scoreA, scoreB, api]);
+
+  // Poll for opponent join
+  useEffect(() => {
+    if (phase !== 'waiting') return;
+    const interval = setInterval(async () => {
+      const data = await api({ action: 'get', roomId });
+      if (data.room?.status === 'ready') {
+        setRoom(data.room);
+        setPhase('select');
+        clearInterval(interval);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [phase, roomId, api]);
+
+  if (!account) {
+    return (
+      <PageHeader eyebrow="BATTLE" title={<>{isZh ? '連接錢包開始對戰' : 'Connect wallet to battle'}</>} sub="" kanjiBg="戰" />
+    );
+  }
+
   return (
     <>
       <PageHeader
-        eyebrow={t.battle.pageEyebrow}
-        title={
-          <>
-            {t.battle.pageTitle1}
-            <br />
-            {t.battle.pageTitle2}
-          </>
-        }
-        sub={t.battle.pageSub}
+        eyebrow="PHYSICAL BATTLE · 實體對戰"
+        title={<>{isZh ? <>現實對戰，<span style={{ color: 'var(--gold)' }}>鏈上紀錄。</span></> : <>Real battle, <span style={{ color: 'var(--gold)' }}>on-chain record.</span></>}</>}
+        sub={isZh ? '在現實中發射你的陀螺對戰，賽後雙方確認結果，永久寫入 Sui 區塊鏈。' : 'Launch your real Beyblades. After the match, both players confirm the result. Permanently written to Sui.'}
         kanjiBg="戰"
-        accent="var(--blood)"
       />
 
       <Section>
-        <div
-          className="battle-lineup sf-grid"
-          style={{
-            gridTemplateColumns: '1fr auto 1fr',
-            gap: 40,
-            alignItems: 'center',
-            marginBottom: 80,
-          }}
-        >
-          <div>
-            <div
-              className="sf-flex sf-items-center sf-gap-3"
-              style={{ marginBottom: 18 }}
-            >
-              <Tag color="var(--gold)">{t.battle.playerA}</Tag>
-              <span
-                className="t-mono"
-                style={{ fontSize: 11, color: 'var(--text-mute)' }}
-              >
-                0xA1...8F4D
-              </span>
+        <div style={{ maxWidth: 560, margin: '0 auto' }}>
+          {error && (
+            <div style={{ padding: 12, borderRadius: 8, background: 'rgba(255,51,51,0.1)', border: '1px solid rgba(255,51,51,0.3)', color: 'var(--blood)', fontSize: 13, marginBottom: 16 }}>
+              {error}
             </div>
-            <div className="sf-grid" style={{ gridTemplateColumns: '1fr', gap: 12 }}>
-              <TeamSlot rotor="R1" el="fire"  name="BLAZE CORE" code="0x89af · #1024" role={t.battle.attackRole}  spinSpeed={0.95} />
-              <TeamSlot rotor="R2" el="metal" name="TIGER FANG" code="0x7b2c · #0512" role={t.battle.defenseRole} spinSpeed={1.1} />
-              <TeamSlot rotor="R3" el="wood"  name="VINE WHIP"  code="0x6d33 · #2104" role={t.battle.staminaRole} spinSpeed={0.8} />
-            </div>
-          </div>
-          <VS />
-          <div>
-            <div
-              className="sf-flex sf-items-center sf-gap-3"
-              style={{ marginBottom: 18, justifyContent: 'flex-end' }}
-            >
-              <span
-                className="t-mono"
-                style={{ fontSize: 11, color: 'var(--text-mute)' }}
-              >
-                0xC2...3A91
-              </span>
-              <Tag color="var(--blood)">{t.battle.playerB}</Tag>
-            </div>
-            <div className="sf-grid" style={{ gridTemplateColumns: '1fr', gap: 12 }}>
-              <TeamSlot rotor="R1" el="water" name="ABYSS SHELL"   code="0x4a8f · #0089" role={t.battle.staminaRole} spinSpeed={1.0} />
-              <TeamSlot rotor="R2" el="earth" name="STONE EMPEROR" code="0x2b91 · #0420" role={t.battle.defenseRole} spinSpeed={0.85} />
-              <TeamSlot rotor="R3" el="fire"  name="EMBER STRIKER" code="0xf30d · #1188" role={t.battle.attackRole}  spinSpeed={1.2} />
-            </div>
-          </div>
-        </div>
+          )}
 
-        <div
-          className="battle-bottom sf-grid"
-          style={{ gridTemplateColumns: '1.2fr 1fr', gap: 32 }}
-        >
-          <LaunchMeter />
-          <div className="panel" style={{ padding: 32 }}>
-            <Eyebrow>{t.battle.winConditions}</Eyebrow>
-            <h3 className="t-h3" style={{ marginTop: 8, marginBottom: 20 }}>
-              {t.battle.threeWaysVictory}
-            </h3>
-            <div style={{ display: 'grid', gap: 0 }}>
-              {winConditions.map((w, i) => (
-                <div
-                  key={i}
-                  className="sf-flex sf-items-center sf-gap-4"
-                  style={{
-                    padding: '18px 0',
-                    borderTop: i > 0 ? '1px solid var(--border-soft)' : undefined,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 10,
-                      background: `${w.color}22`,
-                      border: `1px solid ${w.color}`,
-                      display: 'grid',
-                      placeItems: 'center',
-                      color: w.color,
-                      fontFamily: 'var(--f-han)',
-                      fontWeight: 900,
-                      fontSize: 24,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {w.kanji}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      className="t-mono"
-                      style={{
-                        fontSize: 12,
-                        color: w.color,
-                        letterSpacing: '0.1em',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {w.en}
-                    </div>
-                    <div
-                      className="muted"
-                      style={{ fontSize: 12, marginTop: 4 }}
-                    >
-                      {w.desc}
-                    </div>
-                  </div>
-                  <div
-                    className="t-mono"
-                    style={{
-                      fontSize: 20,
-                      color: w.color,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {w.pts}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div
-              style={{
-                marginTop: 24,
-                paddingTop: 20,
-                borderTop: '1px solid var(--border-soft)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div className="t-eyebrow" style={{ fontSize: 9 }}>
-                  {t.battle.bestOf}
-                </div>
-                <div
-                  className="t-mono"
-                  style={{ fontSize: 18, marginTop: 2 }}
-                >
-                  3 / 5
-                </div>
+          {/* Phase: Create or Join */}
+          {phase === 'create' && (
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div className="panel" style={{ padding: 28, textAlign: 'center' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>⚔️</div>
+                <div className="t-h3" style={{ marginBottom: 8 }}>{isZh ? '建立對戰房間' : 'Create Battle Room'}</div>
+                <p className="muted" style={{ fontSize: 13, marginBottom: 20 }}>
+                  {isZh ? '建立房間後分享代碼給對手' : 'Create a room and share the code with your opponent'}
+                </p>
+                <button onClick={handleCreate} className="btn btn-primary" style={{ padding: '12px 32px' }}>
+                  {isZh ? '建立房間' : 'Create Room'}
+                </button>
               </div>
-              <Link href="/tournament" className="btn btn-battle">
-                {t.battle.enterArena}
-              </Link>
-            </div>
-          </div>
-        </div>
 
-        <div
-          className="panel"
-          style={{
-            marginTop: 32,
-            padding: 24,
-            borderColor: 'rgba(212,175,55,0.2)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 16,
-          }}
-        >
-          <div className="sf-flex sf-items-center sf-gap-3">
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: 'var(--wood)',
-                boxShadow: '0 0 8px var(--wood)',
-                animation: 'float-y 1.2s ease-in-out infinite',
-              }}
-            />
-            <div>
-              <div
-                className="t-mono"
-                style={{
-                  fontSize: 10,
-                  color: 'var(--text-dim)',
-                  letterSpacing: '0.15em',
-                }}
-              >
-                {t.battle.onCompletion}
-              </div>
-              <div
-                style={{
-                  fontFamily: 'var(--f-mono)',
-                  fontSize: 13,
-                  marginTop: 4,
-                }}
-              >
-                <span style={{ color: 'var(--text-mute)' }}>0x</span>
-                <span style={{ color: 'var(--gold)' }}>3f7a89c2</span>
-                <span style={{ color: 'var(--text-mute)' }}>...e2d4 · {t.battle.battleRecordWritten}</span>
+              <div className="panel" style={{ padding: 28 }}>
+                <div className="t-eyebrow" style={{ marginBottom: 12 }}>{isZh ? '或輸入房間代碼加入' : 'Or enter room code to join'}</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    placeholder="ROOM CODE"
+                    style={{
+                      flex: 1, padding: '10px 14px', borderRadius: 8,
+                      background: 'var(--surface-1)', border: '1px solid var(--border)',
+                      color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 16,
+                      letterSpacing: '0.15em', textTransform: 'uppercase',
+                    }}
+                  />
+                  <button onClick={handleJoin} disabled={!joinCode} className="btn btn-primary">
+                    {isZh ? '加入' : 'Join'}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-          <div
-            className="sf-flex sf-gap-4"
-            style={{ fontFamily: 'var(--f-mono)', fontSize: 11 }}
-          >
-            <span>
-              <span style={{ color: 'var(--text-dim)' }}>gas:</span> 0.00021 SUI
-            </span>
-            <span>
-              <span style={{ color: 'var(--text-dim)' }}>finality:</span> 2.1s
-            </span>
-          </div>
+          )}
+
+          {/* Phase: Waiting for opponent */}
+          {phase === 'waiting' && (
+            <div className="panel" style={{ padding: 32, textAlign: 'center', border: '1px solid var(--gold)' }}>
+              <Corners color="var(--gold)" />
+              <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 8 }}>{isZh ? '房間代碼' : 'Room Code'}</div>
+              <div className="t-display" style={{ fontSize: 48, letterSpacing: '0.2em', color: 'var(--gold)' }}>
+                {roomId}
+              </div>
+              <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>
+                {isZh ? '把這個代碼給你的對手，等他加入...' : 'Share this code with your opponent...'}
+              </p>
+              <div style={{ marginTop: 16, width: 24, height: 24, border: '2px solid var(--gold)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '16px auto 0' }} />
+            </div>
+          )}
+
+          {/* Phase: Select Rotor */}
+          {phase === 'select' && (
+            <div className="panel" style={{ padding: 28 }}>
+              <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 12 }}>{isZh ? '選擇你的陀螺' : 'Select Your Rotor'}</div>
+              {beys.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 20 }}>
+                  <p className="muted">{isZh ? '你還沒有組裝好的陀螺。先去註冊一個！' : 'No assembled rotors. Register one first!'}</p>
+                  <a href="/register" className="btn btn-primary" style={{ marginTop: 12 }}>{isZh ? '註冊陀螺' : 'Register Rotor'}</a>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {beys.map((b) => (
+                    <button
+                      key={b.objectId}
+                      onClick={() => setSelectedRotor(b.objectId)}
+                      className={selectedRotor === b.objectId ? 'btn btn-primary' : 'btn btn-ghost'}
+                      style={{ padding: '12px 16px', textAlign: 'left', justifyContent: 'flex-start', fontSize: 13 }}
+                    >
+                      <span className="t-mono" style={{ marginRight: 8 }}>{b.objectId.slice(0, 8)}...</span>
+                      {String(b.fields.name ?? 'Rotor')}
+                    </button>
+                  ))}
+                  <button onClick={handleSelectRotor} disabled={!selectedRotor} className="btn btn-primary" style={{ marginTop: 8, padding: '12px 0' }}>
+                    {isZh ? '確認選擇' : 'Confirm Selection'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Phase: Physical Battle in Progress */}
+          {phase === 'battle' && (
+            <div className="panel" style={{ padding: 32, textAlign: 'center', border: '1px solid var(--fire)' }}>
+              <div style={{ fontSize: 64, marginBottom: 16 }}>🔥</div>
+              <div className="t-h3" style={{ marginBottom: 8 }}>{isZh ? '開始實體對戰！' : 'Battle Now!'}</div>
+              <p className="muted" style={{ fontSize: 14, marginBottom: 24 }}>
+                {isZh ? '在現實中發射你們的陀螺。結束後由勝者提交結果。' : 'Launch your Beyblades in real life. The winner submits the result after.'}
+              </p>
+              <button onClick={() => setPhase('submit')} className="btn btn-primary" style={{ padding: '12px 32px' }}>
+                {isZh ? '對戰結束，提交結果' : 'Battle Over — Submit Result'}
+              </button>
+            </div>
+          )}
+
+          {/* Phase: Submit Result */}
+          {phase === 'submit' && (
+            <div className="panel" style={{ padding: 28 }}>
+              <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 16 }}>{isZh ? '對戰結果' : 'Battle Result'}</div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '勝者' : 'Winner'}</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setWinner(room?.creator ?? '')} className={winner === room?.creator ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
+                    Player A
+                  </button>
+                  <button onClick={() => setWinner(room?.opponent ?? '')} className={winner === room?.opponent ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
+                    Player B
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '終結方式' : 'Finish Type'}</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {[0, 1, 2, 3].map((ft) => (
+                    <button key={ft} onClick={() => setFinishType(ft)} className={finishType === ft ? 'btn btn-primary' : 'btn btn-ghost'} style={{ fontSize: 11, padding: '8px 12px' }}>
+                      {FINISH_LABELS[ft]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div>
+                  <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Score A</div>
+                  <input type="number" value={scoreA} onChange={(e) => setScoreA(Number(e.target.value))} min={0} max={99} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
+                </div>
+                <div>
+                  <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Score B</div>
+                  <input type="number" value={scoreB} onChange={(e) => setScoreB(Number(e.target.value))} min={0} max={99} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
+                </div>
+              </div>
+
+              <button onClick={handleSubmitResult} disabled={!winner} className="btn btn-primary" style={{ width: '100%', padding: '14px 0' }}>
+                {isZh ? '提交結果（等待對手確認）' : 'Submit (waiting for opponent to confirm)'}
+              </button>
+            </div>
+          )}
+
+          {/* Phase: Waiting for confirm (for opponent) */}
+          {phase === 'confirmed' && (
+            <div className="panel" style={{ padding: 28, textAlign: 'center' }}>
+              <p className="muted">{isZh ? '等待對手確認...' : 'Waiting for opponent to confirm...'}</p>
+              <button onClick={handleConfirm} className="btn btn-primary" style={{ marginTop: 16, padding: '12px 32px' }}>
+                {isZh ? '我確認結果' : 'I Confirm Result'}
+              </button>
+            </div>
+          )}
+
+          {/* Phase: Done — On-chain */}
+          {phase === 'done' && (
+            <div className="panel" style={{ padding: 32, textAlign: 'center', border: '1px solid var(--gold)', boxShadow: '0 0 40px rgba(212,175,55,0.15)' }}>
+              <Corners color="var(--gold)" />
+              <div style={{ fontSize: 48, marginBottom: 12 }}>⛓️</div>
+              <div className="t-h3" style={{ marginBottom: 8 }}>{isZh ? '對戰紀錄已上鏈！' : 'Battle Record On-Chain!'}</div>
+              <div className="t-mono" style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 16 }}>
+                {onChainId.slice(0, 16)}...{onChainId.slice(-8)}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Tag color="var(--gold)">{scoreA} - {scoreB}</Tag>
+                <Tag color="var(--fire)">{FINISH_LABELS[finishType]}</Tag>
+              </div>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 }}>
+                <a href="/passport" className="btn btn-primary">{isZh ? '查看護照' : 'View Passport'}</a>
+                <button onClick={() => { setPhase('create'); setRoomId(''); setRoom(null); setError(''); setOnChainId(''); }} className="btn btn-ghost">
+                  {isZh ? '再來一場' : 'Battle Again'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </Section>
     </>
