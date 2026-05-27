@@ -45,3 +45,5 @@ coverage/
 .playwright-mcp/
 .claude/settings.json
 spinforge-*.png
+register-*.png
+page-*.png
