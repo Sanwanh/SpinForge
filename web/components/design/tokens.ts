@@ -64,32 +64,28 @@ export interface NavPage {
 
 export const NAV_PAGES: NavPage[] = [
   { id: 'index',       label: 'Home',       href: '/',            group: 0 },
+  { id: 'register',    label: 'Register',   href: '/register',    group: 1 },
   { id: 'passport',    label: 'Passport',   href: '/passport',    group: 1 },
-  { id: 'elements',    label: 'Elements',   href: '/elements',    group: 1 },
-  { id: 'cards',       label: 'Cards',      href: '/collection',  group: 1 },
-  { id: 'gacha',       label: 'Gacha',      href: '/packs',       group: 2 },
   { id: 'battle',      label: 'Battle',     href: '/battle',      group: 2 },
-  { id: 'forge',       label: 'Forge',      href: '/forge',       group: 2 },
-  { id: 'marketplace', label: 'Market',     href: '/market',      group: 3 },
-  { id: 'tokenomics',  label: '$SPARK',     href: '/tokenomics',  group: 3 },
-  { id: 'tournament',  label: 'Tournament', href: '/tournament',  group: 3 },
-  { id: 'team',        label: 'Team',       href: '/team',        group: 4 },
-  { id: 'faq',         label: 'FAQ',        href: '/faq',         group: 4 },
+  { id: 'cards',       label: 'Collection', href: '/collection',  group: 2 },
+  { id: 'gacha',       label: 'Packs',      href: '/packs',       group: 3 },
+  { id: 'faq',         label: 'FAQ',        href: '/faq',         group: 3 },
 ];
 
 // Map a Next.js pathname to a NAV_PAGES id for active highlighting
 export function activePageId(pathname: string): string {
   if (pathname === '/' || pathname === '') return 'index';
+  if (pathname.startsWith('/register')) return 'register';
   if (pathname.startsWith('/passport')) return 'passport';
-  if (pathname.startsWith('/elements')) return 'elements';
   if (pathname.startsWith('/collection') || pathname.startsWith('/workshop') || pathname.startsWith('/deck')) return 'cards';
   if (pathname.startsWith('/packs')) return 'gacha';
   if (pathname.startsWith('/battle')) return 'battle';
   if (pathname.startsWith('/forge')) return 'forge';
-  if (pathname.startsWith('/market')) return 'marketplace';
-  if (pathname.startsWith('/tokenomics')) return 'tokenomics';
-  if (pathname.startsWith('/tournament')) return 'tournament';
-  if (pathname.startsWith('/team')) return 'team';
+  if (pathname.startsWith('/market')) return 'cards';
+  if (pathname.startsWith('/elements')) return 'index';
+  if (pathname.startsWith('/tokenomics')) return 'index';
+  if (pathname.startsWith('/tournament')) return 'battle';
+  if (pathname.startsWith('/team')) return 'faq';
   if (pathname.startsWith('/faq')) return 'faq';
   if (pathname.startsWith('/profile')) return 'passport';
   return '';

@@ -14,40 +14,28 @@ export function Navbar() {
   const pathname = usePathname();
   const active = activePageId(pathname || '/');
   const t = useT();
+  const isZh = t.nav.home === '首頁';
 
-  // Map design-token nav-page ids to i18n keys
   const navLabel = (id: string): string => {
-    switch (id) {
-      case 'passport':    return t.nav.passport;
-      case 'elements':    return t.nav.elements;
-      case 'cards':       return t.nav.cards;
-      case 'gacha':       return t.nav.gacha;
-      case 'battle':      return t.nav.battle;
-      case 'forge':       return t.nav.forge;
-      case 'marketplace': return t.nav.market;
-      case 'tokenomics':  return t.nav.spark;
-      case 'tournament':  return t.nav.tournament;
-      case 'team':        return t.nav.team;
-      case 'faq':         return t.nav.faq;
-      case 'index':       return t.nav.home;
-      default:            return id;
-    }
+    const labels: Record<string, string> = isZh
+      ? { index: '首頁', register: '註冊', passport: '護照', battle: '對戰', cards: '收藏', gacha: '卡包', faq: '更多' }
+      : { index: 'Home', register: 'Register', passport: 'Passport', battle: 'Battle', cards: 'Collection', gacha: 'Packs', faq: 'More' };
+    return labels[id] ?? id;
   };
 
-  const visible = NAV_PAGES.filter((p) => p.id !== 'index');
+  const desktopLinks = NAV_PAGES.filter((p) => p.id !== 'index');
 
   return (
     <>
+      {/* Desktop navbar */}
       <nav className="sf-nav">
         <Link href="/" className="sf-nav-logo">
-          <span className="mark">
-            <Logo size={28} />
-          </span>
+          <span className="mark"><Logo size={28} /></span>
           SPINFORGE
         </Link>
 
         <div className="sf-nav-links">
-          {visible.map((p, i, arr) => {
+          {desktopLinks.map((p, i, arr) => {
             const prev = arr[i - 1];
             const divider = prev && prev.group !== p.group;
             return (
@@ -67,16 +55,17 @@ export function Navbar() {
         </div>
       </nav>
 
+      {/* Mobile bottom bar — 5 core tabs */}
       <nav className="sf-mobile-bar" aria-label="Mobile primary">
         {[
-          { id: 'index',       k: '家', href: '/' },
-          { id: 'gacha',       k: '鑄', href: '/packs' },
-          { id: 'cards',       k: '卡', href: '/collection' },
-          { id: 'marketplace', k: '市', href: '/market' },
-          { id: 'passport',    k: '證', href: '/passport' },
+          { id: 'index',    icon: '⌂', href: '/' },
+          { id: 'register', icon: '鑄', href: '/register' },
+          { id: 'battle',   icon: '⚔', href: '/battle' },
+          { id: 'passport', icon: '證', href: '/passport' },
+          { id: 'cards',    icon: '卡', href: '/collection' },
         ].map((p) => (
           <Link key={p.id} href={p.href} className={clsx(active === p.id && 'active')}>
-            <span className="k">{p.k}</span>
+            <span className="k">{p.icon}</span>
             {navLabel(p.id)}
           </Link>
         ))}
