@@ -17,6 +17,10 @@ import {
 import { PACKAGE_ID, ORIGINAL_PACKAGE_ID, PROFILE_PACKAGE_ID } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 
+// Common query options — force every visit to /passport to refetch so a
+// fresh mint from /register shows up immediately on navigation.
+const FRESH = { enabled: true, refetchOnMount: 'always' as const, staleTime: 0 };
+
 function usePlayerData(address: string | undefined) {
   // Parts/SPARK live under ORIGINAL_PACKAGE_ID (0xcb4ae0...)
   const {
@@ -30,7 +34,7 @@ function usePlayerData(address: string | undefined) {
       filter: { Package: ORIGINAL_PACKAGE_ID },
       options: { showType: true, showContent: true },
     },
-    { enabled: !!address },
+    { ...FRESH, enabled: !!address },
   );
 
   // PlayerProfile lives under its own package (0x336b41...)
@@ -45,13 +49,13 @@ function usePlayerData(address: string | undefined) {
       filter: { Package: PROFILE_PACKAGE_ID },
       options: { showType: true, showContent: true },
     },
-    { enabled: !!address },
+    { ...FRESH, enabled: !!address },
   );
 
   const { data: sparkData, refetch: refetchSpark } = useSuiClientQuery(
     'getBalance',
     { owner: address ?? '', coinType: `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN` },
-    { enabled: !!address },
+    { ...FRESH, enabled: !!address },
   );
 
   const items = ownedObjects?.data ?? [];
@@ -332,11 +336,12 @@ function OnboardingBanner({ address, onDone }: { address: string; onDone: () => 
 }
 
 function RegistrationFlow() {
+  const t = useT();
   const steps = [
-    { n: 1, k: '拿出實體陀螺', en: 'Grab your real-world top', icon: '▣' },
-    { n: 2, k: '掃描 QR / NFC', en: 'Scan QR · tap NFC · or manual', icon: '◈' },
-    { n: 3, k: '鑄造 Rotor Object', en: 'Mint on-chain Rotor', icon: '✦' },
-    { n: 4, k: '戰績開始累積', en: 'Battle history begins', icon: '⚡' },
+    { n: 1, k: t.passport.step1Title, en: t.passport.step1Sub, icon: '▣' },
+    { n: 2, k: t.passport.step2Title, en: t.passport.step2Sub, icon: '◈' },
+    { n: 3, k: t.passport.step3Title, en: t.passport.step3Sub, icon: '✦' },
+    { n: 4, k: t.passport.step4Title, en: t.passport.step4Sub, icon: '⚡' },
   ];
   return (
     <div
@@ -362,7 +367,7 @@ function RegistrationFlow() {
             className="t-mono"
             style={{ fontSize: 11, color: 'var(--gold)', letterSpacing: '0.2em' }}
           >
-            STEP {String(s.n).padStart(2, '0')}
+            {t.passport.stepLabel} {String(s.n).padStart(2, '0')}
           </div>
           <div
             style={{
@@ -406,6 +411,7 @@ interface ModeCardProps {
 }
 
 function ModeCard({ tag, kanji, title, sub, body, accent, recommended }: ModeCardProps) {
+  const t = useT();
   return (
     <div
       className="panel"
@@ -435,7 +441,7 @@ function ModeCard({ tag, kanji, title, sub, body, accent, recommended }: ModeCar
             whiteSpace: 'nowrap',
           }}
         >
-          RECOMMENDED MVP
+          {t.passport.recommended}
         </div>
       )}
       <div
@@ -494,32 +500,26 @@ function ModeCard({ tag, kanji, title, sub, body, accent, recommended }: ModeCar
   );
 }
 
-const PASSPORT_FIELDS = [
-  { k: 'Rotor Object ID', v: "Permanent Sui Object — your top's unique signature" },
-  { k: 'Battle History',  v: 'Every match, every result, every burst — immutable' },
-  { k: 'Season Standing', v: 'Ranked points, tournament eligibility, badges' },
-  { k: 'Part Provenance', v: 'Verified parts vs community-made, with full custody chain' },
-  { k: 'Owner Trail',     v: 'Original minter + all transfers — like a car title' },
-];
-
-const REGISTRATION_METHODS = [
-  { k: 'QR', n: 'QR Code Sticker', desc: '貼在陀螺盒或本體。掃描即領取鏈上 Rotor。', price: '成本最低 · MVP 首選', tier: 'OFFICIAL', color: 'var(--gold)' },
-  { k: 'NFC', n: 'NFC Tag', desc: '手機靠近即驗證。實體收藏品質感、防偽性強。', price: '中高成本 · 賽級用', tier: 'PREMIUM', color: 'var(--rare)' },
-  { k: 'DIY', n: 'Manual Register', desc: '上傳照片、輸入零件組合。任何陀螺都能成為社群 Rotor。', price: '免費 · 限友誼賽', tier: 'COMMUNITY', color: 'var(--epic)' },
-];
-
 export default function PassportPage() {
   const account = useCurrentAccount();
   const [refreshKey, setRefreshKey] = useState(0);
   const { profile, loadingParts, refetch } = usePlayerData(account?.address);
   const t = useT();
 
+  const isZh = t.nav.home === '首頁';
+
   if (!account) {
     return (
       <>
         <PageHeader
           eyebrow={t.passport.pageEyebrow}
-          title={<>Connect wallet to view your <span style={{ color: 'var(--gold)' }}>Passport.</span></>}
+          title={
+            isZh ? (
+              <>連接錢包以查看你的<span style={{ color: 'var(--gold)' }}>陀螺護照</span></>
+            ) : (
+              <>Connect wallet to view your <span style={{ color: 'var(--gold)' }}>Passport.</span></>
+            )
+          }
           sub={t.collection.connectPrompt}
           kanjiBg="證"
         />
@@ -532,7 +532,13 @@ export default function PassportPage() {
       <>
         <PageHeader
           eyebrow={t.passport.pageEyebrow}
-          title={<>Welcome to <span style={{ color: 'var(--gold)' }}>SpinForge.</span></>}
+          title={
+            isZh ? (
+              <>歡迎來到 <span style={{ color: 'var(--gold)' }}>SpinForge</span></>
+            ) : (
+              <>Welcome to <span style={{ color: 'var(--gold)' }}>SpinForge.</span></>
+            )
+          }
           sub={t.home.connectPrompt}
           kanjiBg="證"
         />
@@ -577,16 +583,22 @@ export default function PassportPage() {
             <PassportCard address={account.address} key={refreshKey} />
           </div>
           <div>
-            <Eyebrow color="var(--gold)">What lives in your Passport</Eyebrow>
+            <Eyebrow color="var(--gold)">{t.passport.livesEyebrow}</Eyebrow>
             <h2 className="t-h3" style={{ marginTop: 14, marginBottom: 24, fontSize: 36 }}>
-              A car license plate.
+              {t.passport.livesTitle1}
               <br />
-              An athlete's ID.
+              {t.passport.livesTitle2}
               <br />
-              A historical record.
+              {t.passport.livesTitle3}
             </h2>
             <div style={{ display: 'grid', gap: 16 }}>
-              {PASSPORT_FIELDS.map((d, i) => (
+              {[
+                { k: t.passport.fieldRotorObjectId, v: t.passport.fieldRotorObjectIdDesc },
+                { k: t.passport.fieldBattleHistory, v: t.passport.fieldBattleHistoryDesc },
+                { k: t.passport.fieldSeason,        v: t.passport.fieldSeasonDesc },
+                { k: t.passport.fieldProvenance,    v: t.passport.fieldProvenanceDesc },
+                { k: t.passport.fieldOwnerTrail,    v: t.passport.fieldOwnerTrailDesc },
+              ].map((d, i) => (
                 <div
                   key={i}
                   style={{
@@ -615,8 +627,8 @@ export default function PassportPage() {
               ))}
             </div>
             <div className="sf-flex sf-gap-3" style={{ marginTop: 32 }}>
-              <Link href="/packs" className="btn btn-primary">
-                Register My Top
+              <Link href="/register" className="btn btn-primary">
+                {t.passport.registerMyTop}
               </Link>
               <a
                 href="https://suiexplorer.com/"
@@ -624,7 +636,7 @@ export default function PassportPage() {
                 rel="noreferrer"
                 className="btn btn-ghost"
               >
-                View on Sui Explorer ↗
+                {t.passport.viewOnSui}
               </a>
             </div>
           </div>
@@ -634,9 +646,9 @@ export default function PassportPage() {
 
         <div style={{ marginTop: 96 }}>
           <SectionHead
-            eyebrow="THREE WAYS TO BATTLE"
-            title="實體陀螺，鏈上紀錄。"
-            sub="從最簡單的雙方確認，到 AI 裁判全自動判定 —— 三種模式對應不同場景。"
+            eyebrow={t.passport.threeWaysEyebrow}
+            title={t.passport.threeWaysTitle}
+            sub={t.passport.threeWaysSub}
             align="center"
           />
           <div
@@ -644,43 +656,43 @@ export default function PassportPage() {
             style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}
           >
             <ModeCard
-              tag="MODE · 01"
+              tag={t.passport.mode1Tag}
               kanji="戰"
-              title="Physical Battle + Chain Record"
-              sub="實體對戰 + 鏈上紀錄"
+              title={t.passport.mode1Title}
+              sub={t.passport.mode1Sub}
               accent="var(--gold)"
               recommended
               body={[
-                '雙方掃描自己的陀螺，建立 Battle Room',
-                '現實中發射，實體判定勝負',
-                '賽後雙方點擊確認，結果寫入 Sui',
-                '每場真實對戰 → 鏈上 BattleRecord',
+                t.passport.mode1Body1,
+                t.passport.mode1Body2,
+                t.passport.mode1Body3,
+                t.passport.mode1Body4,
               ]}
             />
             <ModeCard
-              tag="MODE · 02"
+              tag={t.passport.mode2Tag}
               kanji="策"
-              title="Physical + Card Strategy"
-              sub="實體陀螺 + 卡牌輔助"
+              title={t.passport.mode2Title}
+              sub={t.passport.mode2Sub}
               accent="var(--rare)"
               body={[
-                '賽前裝備 3 張任務型卡牌',
-                '卡牌不改物理結果，只影響賽事獎勵',
-                'Burst Hunter · Long Spin · Arena Boost',
-                '讓不同陀螺類型都有上場空間',
+                t.passport.mode2Body1,
+                t.passport.mode2Body2,
+                t.passport.mode2Body3,
+                t.passport.mode2Body4,
               ]}
             />
             <ModeCard
-              tag="MODE · 03"
+              tag={t.passport.mode3Tag}
               kanji="模"
-              title="Pure Online Simulation"
-              sub="純線上模擬對戰"
+              title={t.passport.mode3Title}
+              sub={t.passport.mode3Sub}
               accent="var(--epic)"
               body={[
-                '沒有實體陀螺也能玩',
-                '回合制 · 出牌影響系統判定',
-                '適合早期 MVP 與遠距離 PvP',
-                '戰績同樣寫入鏈上',
+                t.passport.mode3Body1,
+                t.passport.mode3Body2,
+                t.passport.mode3Body3,
+                t.passport.mode3Body4,
               ]}
             />
           </div>
@@ -688,16 +700,20 @@ export default function PassportPage() {
 
         <div style={{ marginTop: 96 }}>
           <SectionHead
-            eyebrow="REGISTRATION METHODS"
-            title="三種方式，把陀螺鑄上鏈。"
-            sub="從便宜的 QR 貼紙，到高級的 NFC 認證，再到自帶陀螺的社群註冊 —— 任何人都不被擋在門外。"
+            eyebrow={t.passport.methodsEyebrow}
+            title={t.passport.methodsTitle}
+            sub={t.passport.methodsSub}
             align="center"
           />
           <div
             className="mode-grid sf-grid"
             style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}
           >
-            {REGISTRATION_METHODS.map((r, i) => (
+            {[
+              { k: 'QR', n: t.passport.methodQrName,  desc: t.passport.methodQrDesc,  price: t.passport.methodQrPrice,  tier: t.passport.methodQrTier,  color: 'var(--gold)' },
+              { k: 'NFC', n: t.passport.methodNfcName, desc: t.passport.methodNfcDesc, price: t.passport.methodNfcPrice, tier: t.passport.methodNfcTier, color: 'var(--rare)' },
+              { k: 'DIY', n: t.passport.methodDiyName, desc: t.passport.methodDiyDesc, price: t.passport.methodDiyPrice, tier: t.passport.methodDiyTier, color: 'var(--epic)' },
+            ].map((r, i) => (
               <div
                 key={i}
                 className="panel"
