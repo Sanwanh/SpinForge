@@ -30,7 +30,11 @@ export function useInventory() {
       filter: { Package: ORIGINAL_PACKAGE_ID },
       options: { showContent: true, showType: true },
     },
-    { enabled: !!account?.address }
+    {
+      enabled: !!account?.address,
+      refetchOnMount: 'always',
+      staleTime: 0,
+    }
   );
 
   const parts = useMemo(() => {

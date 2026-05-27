@@ -7,7 +7,301 @@ import { RARITY_LABELS, SPIRIT_BEASTS, ELEMENT_COLORS, PACKAGE_ID, type Rarity, 
 import { useT } from '@/lib/i18n';
 import { useSparkBalance } from '@/hooks/useSparkBalance';
 import { useInventory } from '@/hooks/useInventory';
-import { PageHeader, Section } from '@/components/design/atoms';
+import { PageHeader, Section, Corners } from '@/components/design/atoms';
+
+const PACK_COST = 100;
+
+function SparkInfoCard({
+  sparkBalance,
+  address,
+  isZh,
+  t,
+  onClaimed,
+}: {
+  sparkBalance: string;
+  address: string;
+  isZh: boolean;
+  t: ReturnType<typeof useT>;
+  onClaimed: () => void;
+}) {
+  const bal = Number(sparkBalance);
+  const affordable = Math.floor(bal / PACK_COST);
+  const enoughForOne = affordable >= 1;
+  const need = enoughForOne ? 0 : PACK_COST - bal;
+
+  const [claiming, setClaiming] = useState(false);
+  const [claimMsg, setClaimMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handleClaim = useCallback(async () => {
+    if (claiming) return;
+    setClaiming(true);
+    setClaimMsg(null);
+    try {
+      const res = await fetch('/api/faucet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setClaimMsg({ ok: false, text: data.error || t.packs.starterClaimErr });
+      } else {
+        setClaimMsg({ ok: true, text: t.packs.starterClaimedOk });
+        onClaimed();
+      }
+    } catch {
+      setClaimMsg({ ok: false, text: t.packs.starterClaimErr });
+    } finally {
+      setClaiming(false);
+    }
+  }, [address, claiming, t, onClaimed]);
+
+  return (
+    <div
+      className="panel"
+      style={{
+        padding: 28,
+        position: 'relative',
+        border: enoughForOne ? '1px solid var(--gold)' : '1px solid var(--blood)',
+        boxShadow: enoughForOne
+          ? '0 0 32px rgba(212,175,55,0.12)'
+          : '0 0 24px rgba(255,51,51,0.12)',
+        marginBottom: 32,
+      }}
+    >
+      <Corners color={enoughForOne ? 'var(--gold)' : 'var(--blood)'} />
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr auto',
+          gap: 24,
+          alignItems: 'center',
+          marginBottom: 22,
+        }}
+      >
+        <div>
+          <div
+            className="t-mono"
+            style={{
+              fontSize: 10,
+              color: 'var(--text-dim)',
+              letterSpacing: '0.18em',
+              textTransform: 'uppercase',
+              marginBottom: 6,
+            }}
+          >
+            {t.packs.yourSpark}
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 10,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span
+              className="text-gradient"
+              style={{
+                fontFamily: 'var(--f-display)',
+                fontWeight: 700,
+                fontSize: 56,
+                lineHeight: 1,
+              }}
+            >
+              {Number(sparkBalance).toLocaleString()}
+            </span>
+            <span className="t-mono" style={{ fontSize: 14, color: 'var(--gold)' }}>
+              SPARK
+            </span>
+          </div>
+          <div
+            className="t-mono"
+            style={{ marginTop: 8, fontSize: 12, color: 'var(--text-mute)' }}
+          >
+            {t.packs.costPerPack}
+          </div>
+        </div>
+
+        <div
+          style={{
+            textAlign: 'right',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-end',
+            gap: 6,
+          }}
+        >
+          {enoughForOne ? (
+            <>
+              <div
+                className="t-mono"
+                style={{
+                  fontSize: 11,
+                  color: 'var(--wood)',
+                  letterSpacing: '0.12em',
+                }}
+              >
+                ✓ {t.packs.canAfford
+                  .replace('{n}', String(affordable))
+                  .replace('{s}', affordable === 1 ? '' : 's')}
+              </div>
+              <div
+                className="t-mono"
+                style={{ fontSize: 12, color: 'var(--text-mute)' }}
+              >
+                {sparkBalance} ÷ 100
+              </div>
+            </>
+          ) : (
+            <>
+              <div
+                className="t-mono"
+                style={{
+                  fontSize: 11,
+                  color: 'var(--blood)',
+                  letterSpacing: '0.12em',
+                  fontWeight: 700,
+                }}
+              >
+                ✗ {t.packs.cannotAfford}
+              </div>
+              <div className="t-mono" style={{ fontSize: 12, color: 'var(--text-mute)' }}>
+                {t.packs.needMoreSpark.replace('{n}', String(need))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {!enoughForOne && (
+        <div style={{ marginBottom: 18 }}>
+          <button
+            onClick={handleClaim}
+            disabled={claiming}
+            className="btn btn-primary"
+            style={{ width: '100%', padding: '14px 0', fontSize: 14, justifyContent: 'center' }}
+          >
+            {claiming ? t.packs.claiming : t.packs.claimStarter}
+          </button>
+          <div
+            className="t-mono"
+            style={{
+              marginTop: 8,
+              fontSize: 10,
+              color: 'var(--text-dim)',
+              textAlign: 'center',
+              letterSpacing: '0.1em',
+            }}
+          >
+            {t.packs.onceOnly}
+          </div>
+          {claimMsg && (
+            <div
+              className="t-mono"
+              style={{
+                marginTop: 10,
+                fontSize: 12,
+                textAlign: 'center',
+                color: claimMsg.ok ? 'var(--wood)' : 'var(--blood)',
+                padding: 10,
+                borderRadius: 6,
+                border: `1px solid ${claimMsg.ok ? 'rgba(0,255,136,0.3)' : 'rgba(255,51,51,0.3)'}`,
+                background: claimMsg.ok ? 'rgba(0,255,136,0.06)' : 'rgba(255,51,51,0.08)',
+              }}
+            >
+              {claimMsg.text}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 18,
+          paddingTop: 18,
+          borderTop: '1px solid var(--border-soft)',
+        }}
+        className="spark-info-grid"
+      >
+        <SparkInfoColumn
+          accent="var(--wood)"
+          title={t.packs.howToEarnTitle}
+          items={[t.packs.howToEarn1, t.packs.howToEarn2, t.packs.howToEarn3, t.packs.howToEarn4]}
+        />
+        <SparkInfoColumn
+          accent="var(--gold)"
+          title={t.packs.howToSpendTitle}
+          items={[t.packs.howToSpend1, t.packs.howToSpend2, t.packs.howToSpend3, t.packs.howToSpend4]}
+        />
+      </div>
+
+      <p
+        className="muted"
+        style={{
+          marginTop: 16,
+          fontSize: 12,
+          lineHeight: 1.55,
+          textAlign: 'center',
+          fontStyle: 'italic',
+        }}
+      >
+        {t.packs.spendInfoFooter}
+      </p>
+    </div>
+  );
+}
+
+function SparkInfoColumn({
+  accent,
+  title,
+  items,
+}: {
+  accent: string;
+  title: string;
+  items: string[];
+}) {
+  return (
+    <div>
+      <div
+        className="t-mono"
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: '0.14em',
+          color: accent,
+          textTransform: 'uppercase',
+          marginBottom: 10,
+        }}
+      >
+        {title}
+      </div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
+        {items.map((it, i) => (
+          <li
+            key={i}
+            style={{
+              fontSize: 13,
+              color: 'var(--text-mute)',
+              lineHeight: 1.45,
+              display: 'flex',
+              gap: 8,
+              alignItems: 'baseline',
+            }}
+          >
+            <span style={{ color: accent, fontFamily: 'var(--f-mono)', fontSize: 11, flexShrink: 0 }}>
+              ›
+            </span>
+            {it}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 interface RevealedCard {
   id: string;
@@ -197,18 +491,20 @@ export default function PacksPage() {
     );
   }
 
+  const isZh = t.nav.home === '首頁';
+
   return (
     <>
       <PageHeader
-        eyebrow="04 / GACHA · 鑄盒"
+        eyebrow={t.packs.pageEyebrow}
         title={
           <>
-            Standard Pack.
+            {t.packs.standardPack}
             <br />
-            <span style={{ color: 'var(--gold)' }}>5 random parts.</span>
+            <span style={{ color: 'var(--gold)' }}>{t.packs.randomParts}</span>
           </>
         }
-        sub={`SPARK ${sparkBalance} · 一包 100 SPARK 包含 5 個零件。`}
+        sub={t.packs.pageSub}
         kanjiBg="鑄"
       />
 
@@ -238,14 +534,37 @@ export default function PacksPage() {
 
         <div
           className="relative z-10"
-          style={{ maxWidth: 1280, margin: '0 auto' }}
+          style={{ maxWidth: 760, margin: '0 auto' }}
         >
+
+        {/* SPARK balance + education panel — only when not actively in a reveal */}
+        {(phase === 'idle' || phase === 'opening' || phase === 'burst') && (
+          <SparkInfoCard
+            sparkBalance={sparkBalance}
+            address={account.address}
+            isZh={isZh}
+            t={t}
+            onClaimed={() => {
+              refetchSpark();
+              refetchInventory();
+            }}
+          />
+        )}
 
         {error && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+            className="panel"
+            style={{
+              padding: 14,
+              marginBottom: 18,
+              borderColor: 'var(--blood)',
+              background: 'rgba(255,51,51,0.08)',
+              color: 'var(--blood)',
+              fontSize: 13,
+              fontFamily: 'var(--f-mono)',
+            }}
           >
             {error}
           </motion.div>

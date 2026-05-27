@@ -13,7 +13,12 @@ export function useSparkBalance() {
       owner: account?.address ?? '',
       coinType: SPARK_TYPE,
     },
-    { enabled: !!account?.address },
+    {
+      enabled: !!account?.address,
+      // Refresh balance every page visit so a fresh mint/spend reflects immediately.
+      refetchOnMount: 'always',
+      staleTime: 0,
+    },
   );
 
   const balance = useMemo(() => {
@@ -37,7 +42,11 @@ export function useSparkCoins() {
       owner: account?.address ?? '',
       coinType: SPARK_TYPE,
     },
-    { enabled: !!account?.address },
+    {
+      enabled: !!account?.address,
+      refetchOnMount: 'always',
+      staleTime: 0,
+    },
   );
 
   const coins = useMemo(() => {
