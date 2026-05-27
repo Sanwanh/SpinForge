@@ -450,6 +450,13 @@ export const en = {
     methodDiyName: 'Manual Register',
     methodDiyDesc: 'Upload a photo, enter part combo. Any top can become a Community Rotor.',
     methodDiyPrice: 'Free · friendly matches only',
+    myRotorsEyebrow: 'MY ROTORS · 我的陀螺',
+    myRotorsTitle: 'Your rotor collection',
+    myRotorsSub: 'Every rotor you have minted to Sui. Each battle updates these records.',
+    myRotorsEmpty: 'No rotors yet. Register your first one!',
+    myRotorsRegisterCta: '🔗 Mint your first rotor',
+    myRotorsCount: '{n} rotor{s}',
+    myRotorsBattleCta: 'Take it to battle →',
   },
   tokenomics: {
     pageEyebrow: '08 / $SPARK',

@@ -14,6 +14,7 @@ import {
   Stat,
   Tag,
 } from '@/components/design/atoms';
+import { BeyCard, type BeyCardData } from '@/components/design/BeyCard';
 import { PACKAGE_ID, ORIGINAL_PACKAGE_ID, PROFILE_PACKAGE_ID } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 
@@ -271,6 +272,101 @@ function PassportCard({ address }: { address: string }) {
   );
 }
 
+function beyToCard(b: { data?: { objectId?: string; content?: unknown } | null }): BeyCardData | null {
+  const data = b.data;
+  if (!data?.objectId) return null;
+  const content = data.content as { dataType?: string; fields?: Record<string, unknown> } | undefined;
+  if (content?.dataType !== 'moveObject') return null;
+  const fields = content.fields ?? {};
+  return {
+    objectId: data.objectId,
+    name: String(fields.name ?? 'Unnamed Rotor'),
+    wins: Number(fields.wins ?? 0),
+    losses: Number(fields.losses ?? 0),
+    burstFinishes: Number(fields.burst_finishes ?? 0),
+    xtremeFinishes: Number(fields.xtreme_finishes ?? 0),
+  };
+}
+
+function MyRotors({
+  beys,
+}: {
+  beys: ReturnType<typeof usePlayerData>['beys'];
+}) {
+  const t = useT();
+  const cards: BeyCardData[] = (beys ?? [])
+    .map(beyToCard)
+    .filter((c): c is BeyCardData => c !== null);
+
+  return (
+    <div style={{ marginTop: 96 }}>
+      <SectionHead
+        eyebrow={t.passport.myRotorsEyebrow}
+        title={t.passport.myRotorsTitle}
+        sub={t.passport.myRotorsSub}
+        align="center"
+      />
+
+      {cards.length === 0 ? (
+        <div
+          className="panel"
+          style={{
+            padding: '64px 32px',
+            textAlign: 'center',
+            maxWidth: 560,
+            margin: '0 auto',
+            borderStyle: 'dashed',
+          }}
+        >
+          <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.4 }}>🎯</div>
+          <p
+            className="muted"
+            style={{ fontSize: 15, lineHeight: 1.55, margin: '0 0 24px' }}
+          >
+            {t.passport.myRotorsEmpty}
+          </p>
+          <Link href="/register" className="btn btn-primary">
+            {t.passport.myRotorsRegisterCta}
+          </Link>
+        </div>
+      ) : (
+        <>
+          <div
+            className="sf-flex sf-justify-between sf-items-center"
+            style={{ marginBottom: 18, flexWrap: 'wrap', gap: 8 }}
+          >
+            <Eyebrow color="var(--gold)">
+              {t.passport.myRotorsCount
+                .replace('{n}', String(cards.length))
+                .replace('{s}', cards.length === 1 ? '' : 's')}
+            </Eyebrow>
+            <div className="sf-flex sf-gap-3">
+              <Link href="/register" className="btn btn-ghost" style={{ padding: '8px 16px', fontSize: 12 }}>
+                + {t.passport.registerMyTop}
+              </Link>
+              <Link href="/battle" className="btn btn-primary" style={{ padding: '8px 16px', fontSize: 12 }}>
+                {t.passport.myRotorsBattleCta}
+              </Link>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gap: 14,
+            }}
+          >
+            {cards.map((c) => (
+              <BeyCard key={c.objectId} bey={c} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function OnboardingBanner({ address, onDone }: { address: string; onDone: () => void }) {
   const [step, setStep] = useState<'idle' | 'creating' | 'claiming' | 'done'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -503,7 +599,7 @@ function ModeCard({ tag, kanji, title, sub, body, accent, recommended }: ModeCar
 export default function PassportPage() {
   const account = useCurrentAccount();
   const [refreshKey, setRefreshKey] = useState(0);
-  const { profile, loadingParts, refetch } = usePlayerData(account?.address);
+  const { profile, beys, loadingParts, refetch } = usePlayerData(account?.address);
   const t = useT();
 
   const isZh = t.nav.home === '首頁';
@@ -641,6 +737,8 @@ export default function PassportPage() {
             </div>
           </div>
         </div>
+
+        <MyRotors beys={beys} />
 
         <RegistrationFlow />
 

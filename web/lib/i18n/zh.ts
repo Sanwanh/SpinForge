@@ -450,6 +450,13 @@ export const zh = {
     methodDiyName: '手動註冊',
     methodDiyDesc: '上傳照片、輸入零件組合。任何陀螺都能成為社群 Rotor。',
     methodDiyPrice: '免費 · 限友誼賽',
+    myRotorsEyebrow: '我的陀螺 · MY ROTORS',
+    myRotorsTitle: '你的陀螺收藏',
+    myRotorsSub: '所有已鑄造到 Sui 鏈上的陀螺。每場對戰都會更新這些紀錄。',
+    myRotorsEmpty: '還沒有陀螺。先去註冊一顆吧！',
+    myRotorsRegisterCta: '🔗 鑄造你的第一顆陀螺',
+    myRotorsCount: '{n} 顆陀螺',
+    myRotorsBattleCta: '帶它去對戰 →',
   },
   tokenomics: {
     pageEyebrow: '08 / $SPARK',
