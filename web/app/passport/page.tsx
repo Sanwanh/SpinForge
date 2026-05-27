@@ -14,11 +14,16 @@ import {
   Stat,
   Tag,
 } from '@/components/design/atoms';
-import { PACKAGE_ID, ORIGINAL_PACKAGE_ID } from '@/lib/constants';
+import { PACKAGE_ID, ORIGINAL_PACKAGE_ID, PROFILE_PACKAGE_ID } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 
 function usePlayerData(address: string | undefined) {
-  const { data: ownedObjects, isLoading: loadingParts } = useSuiClientQuery(
+  // Parts/SPARK live under ORIGINAL_PACKAGE_ID (0xcb4ae0...)
+  const {
+    data: ownedObjects,
+    isLoading: loadingParts,
+    refetch: refetchParts,
+  } = useSuiClientQuery(
     'getOwnedObjects',
     {
       owner: address ?? '',
@@ -28,7 +33,22 @@ function usePlayerData(address: string | undefined) {
     { enabled: !!address },
   );
 
-  const { data: sparkData } = useSuiClientQuery(
+  // PlayerProfile lives under its own package (0x336b41...)
+  const {
+    data: profileObjects,
+    isLoading: loadingProfile,
+    refetch: refetchProfile,
+  } = useSuiClientQuery(
+    'getOwnedObjects',
+    {
+      owner: address ?? '',
+      filter: { Package: PROFILE_PACKAGE_ID },
+      options: { showType: true, showContent: true },
+    },
+    { enabled: !!address },
+  );
+
+  const { data: sparkData, refetch: refetchSpark } = useSuiClientQuery(
     'getBalance',
     { owner: address ?? '', coinType: `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN` },
     { enabled: !!address },
@@ -39,7 +59,9 @@ function usePlayerData(address: string | undefined) {
   const ratchets = items.filter((i) => i.data?.type?.includes('::ratchet::'));
   const bits = items.filter((i) => i.data?.type?.includes('::bit::'));
   const beys = items.filter((i) => i.data?.type?.includes('::bey::'));
-  const profiles = items.filter((i) => i.data?.type?.includes('::player_profile::'));
+  const profiles = (profileObjects?.data ?? []).filter((i) =>
+    i.data?.type?.includes('::player_profile::PlayerProfile'),
+  );
   const spark = Number(BigInt(sparkData?.totalBalance ?? '0')) / 1e9;
 
   let profile: Record<string, unknown> | null = null;
@@ -52,7 +74,24 @@ function usePlayerData(address: string | undefined) {
     }
   }
 
-  return { blades, ratchets, bits, beys, profile, profileId, spark, loadingParts };
+  const refetchAll = () => {
+    refetchParts();
+    refetchProfile();
+    refetchSpark();
+  };
+
+  return {
+    blades,
+    ratchets,
+    bits,
+    beys,
+    profile,
+    profileId,
+    profileCount: profiles.length,
+    spark,
+    loadingParts: loadingParts || loadingProfile,
+    refetch: refetchAll,
+  };
 }
 
 function PassportCard({ address }: { address: string }) {
@@ -472,7 +511,7 @@ const REGISTRATION_METHODS = [
 export default function PassportPage() {
   const account = useCurrentAccount();
   const [refreshKey, setRefreshKey] = useState(0);
-  const { profile, loadingParts } = usePlayerData(account?.address);
+  const { profile, loadingParts, refetch } = usePlayerData(account?.address);
   const t = useT();
 
   if (!account) {
@@ -498,7 +537,13 @@ export default function PassportPage() {
           kanjiBg="證"
         />
         <Section>
-          <OnboardingBanner address={account.address} onDone={() => setRefreshKey((k) => k + 1)} />
+          <OnboardingBanner
+            address={account.address}
+            onDone={() => {
+              setRefreshKey((k) => k + 1);
+              refetch();
+            }}
+          />
         </Section>
       </>
     );

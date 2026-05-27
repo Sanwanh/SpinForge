@@ -2,7 +2,7 @@
 
 import { useCurrentAccount, useSuiClientQuery } from '@mysten/dapp-kit';
 import { useMemo } from 'react';
-import { PACKAGE_ID } from '@/lib/constants';
+import { ORIGINAL_PACKAGE_ID } from '@/lib/constants';
 
 export interface PartObject {
   objectId: string;
@@ -25,10 +25,12 @@ export function useInventory() {
     'getOwnedObjects',
     {
       owner: account?.address ?? '',
-      filter: { Package: PACKAGE_ID },
+      // Sui type identity is bound to the ORIGINAL defining package, not upgraded versions.
+      // All Blade/Ratchet/Bit/Bey/SPARK_TOKEN types live under ORIGINAL_PACKAGE_ID.
+      filter: { Package: ORIGINAL_PACKAGE_ID },
       options: { showContent: true, showType: true },
     },
-    { enabled: !!account?.address && PACKAGE_ID !== '0x0' }
+    { enabled: !!account?.address }
   );
 
   const parts = useMemo(() => {

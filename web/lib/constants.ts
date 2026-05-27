@@ -10,7 +10,12 @@ export const SPARK_TREASURY_CAP_ID = '0x40bcb3ceb5f8e1e19f46388f418bccf108e5cd45
 export const FORGE_TREASURY_CAP_ID = '0xd7460f080363a217383d60c9361f08ff6a10175c8a5ebbf1338508d921bdccd2';
 export const TRANSFER_POLICY_ID = '0x5246d426451a76b966bf54902da9682879346277a6969f69c08552765c72ab6c';
 export const SUI_RANDOM_ID = '0x8';
-export const SPARK_TYPE = `${PACKAGE_ID}::spark_token::SPARK_TOKEN`;
+// SPARK_TOKEN type is bound to the ORIGINAL defining package, not upgraded versions.
+export const SPARK_TYPE = `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN`;
+
+// PlayerProfile lives in its own package (separate deployment from spark/blade/ratchet/bit).
+export const PROFILE_PACKAGE_ID = '0x336b411e970ca133219d295340f107be30e2e2398d8ad3c81149fa806153539a';
+export const PROFILE_TYPE = `${PROFILE_PACKAGE_ID}::player_profile::PlayerProfile`;
 
 // ---- Spirit Beasts ----
 export const SPIRIT_BEASTS = [
