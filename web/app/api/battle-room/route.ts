@@ -4,8 +4,10 @@ interface BattleRoom {
   id: string;
   creator: string;
   creatorRotor: string | null;
+  creatorRotorName: string | null;
   opponent: string | null;
   opponentRotor: string | null;
+  opponentRotorName: string | null;
   status: 'waiting' | 'ready' | 'in_progress' | 'submitted' | 'confirmed' | 'completed';
   result: {
     winner: string;
@@ -43,8 +45,10 @@ export async function POST(request: NextRequest) {
         id,
         creator,
         creatorRotor: null,
+        creatorRotorName: null,
         opponent: null,
         opponentRotor: null,
+        opponentRotorName: null,
         status: 'waiting',
         result: null,
         createdAt: Date.now(),
@@ -65,12 +69,19 @@ export async function POST(request: NextRequest) {
     }
 
     case 'select-rotor': {
-      const { roomId, player, rotorId } = body;
+      const { roomId, player, rotorId, rotorName } = body;
       const room = rooms.get(roomId);
       if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-      if (player === room.creator) room.creatorRotor = rotorId;
-      else if (player === room.opponent) room.opponentRotor = rotorId;
-      else return NextResponse.json({ error: 'Not a participant' }, { status: 400 });
+      const nameStr = typeof rotorName === 'string' ? rotorName : null;
+      if (player === room.creator) {
+        room.creatorRotor = rotorId;
+        room.creatorRotorName = nameStr;
+      } else if (player === room.opponent) {
+        room.opponentRotor = rotorId;
+        room.opponentRotorName = nameStr;
+      } else {
+        return NextResponse.json({ error: 'Not a participant' }, { status: 400 });
+      }
 
       if (room.creatorRotor && room.opponentRotor) room.status = 'in_progress';
       return NextResponse.json({ success: true, room });

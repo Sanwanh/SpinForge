@@ -1,9 +1,15 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useCurrentAccount, useSuiClientQuery } from '@mysten/dapp-kit';
 import { useInventory } from '@/hooks/useInventory';
 import { PageHeader, Section, Tag, Corners, Stat } from '@/components/design/atoms';
+import {
+  BeyCard,
+  type BeyCardData,
+  getLastUsedRotor,
+  setLastUsedRotor,
+} from '@/components/design/BeyCard';
 import { useT } from '@/lib/i18n';
 
 type Phase = 'create' | 'waiting' | 'select' | 'battle' | 'submit' | 'confirmed' | 'done';
@@ -14,8 +20,21 @@ interface RoomData {
   opponent: string | null;
   creatorRotor: string | null;
   opponentRotor: string | null;
+  creatorRotorName?: string | null;
+  opponentRotorName?: string | null;
   status: string;
   result: { winner: string; finishType: number; scoreA: number; scoreB: number } | null;
+}
+
+function beyFromInventory(b: { objectId: string; fields: Record<string, unknown> }): BeyCardData {
+  return {
+    objectId: b.objectId,
+    name: String(b.fields.name ?? 'Rotor'),
+    wins: Number(b.fields.wins ?? 0),
+    losses: Number(b.fields.losses ?? 0),
+    burstFinishes: Number(b.fields.burst_finishes ?? 0),
+    xtremeFinishes: Number(b.fields.xtreme_finishes ?? 0),
+  };
 }
 
 const FINISH_LABELS: Record<number, string> = {
@@ -36,6 +55,17 @@ export default function BattlePage() {
   const [joinCode, setJoinCode] = useState('');
   const [room, setRoom] = useState<RoomData | null>(null);
   const [selectedRotor, setSelectedRotor] = useState('');
+
+  // Pre-select the rotor the user used last time, if it's still in inventory
+  useEffect(() => {
+    if (selectedRotor) return;
+    if (phase !== 'select') return;
+    if (beys.length === 0) return;
+    const last = getLastUsedRotor();
+    if (last && beys.some((b) => b.objectId === last)) {
+      setSelectedRotor(last);
+    }
+  }, [phase, beys, selectedRotor]);
   const [winner, setWinner] = useState('');
   const [finishType, setFinishType] = useState(0);
   const [scoreA, setScoreA] = useState(7);
@@ -76,12 +106,21 @@ export default function BattlePage() {
 
   const handleSelectRotor = useCallback(async () => {
     if (!account || !selectedRotor) return;
-    const data = await api({ action: 'select-rotor', roomId, player: account.address, rotorId: selectedRotor });
+    const selectedBey = beys.find((b) => b.objectId === selectedRotor);
+    const rotorName = selectedBey ? String(selectedBey.fields.name ?? 'Rotor') : 'Rotor';
+    const data = await api({
+      action: 'select-rotor',
+      roomId,
+      player: account.address,
+      rotorId: selectedRotor,
+      rotorName,
+    });
     if (data.success) {
+      setLastUsedRotor(selectedRotor);
       setRoom(data.room);
       if (data.room.status === 'in_progress') setPhase('battle');
     }
-  }, [account, selectedRotor, roomId, api]);
+  }, [account, selectedRotor, roomId, beys, api]);
 
   const handleSubmitResult = useCallback(async () => {
     if (!account || !winner) return;
@@ -117,19 +156,52 @@ export default function BattlePage() {
     }
   }, [account, roomId, room, winner, finishType, scoreA, scoreB, api]);
 
-  // Poll for opponent join
+  // Poll for room updates during waiting / select / submit phases so each
+  // player sees the other's selection + result without manual refresh.
   useEffect(() => {
-    if (phase !== 'waiting') return;
+    if (phase !== 'waiting' && phase !== 'select' && phase !== 'submit') return;
     const interval = setInterval(async () => {
       const data = await api({ action: 'get', roomId });
-      if (data.room?.status === 'ready') {
-        setRoom(data.room);
-        setPhase('select');
-        clearInterval(interval);
-      }
+      if (!data.room) return;
+      setRoom(data.room);
+      if (phase === 'waiting' && data.room.status === 'ready') setPhase('select');
+      if (phase === 'select' && data.room.status === 'in_progress') setPhase('battle');
     }, 3000);
     return () => clearInterval(interval);
   }, [phase, roomId, api]);
+
+  // Opponent's bey object (fetched directly from chain so we always see
+  // their real name + stats — independent of what the room cache claims).
+  const opponentAddress = account
+    ? (room?.creator === account.address ? room?.opponent : room?.creator)
+    : null;
+  const opponentRotorId = account
+    ? (room?.creator === account.address ? room?.opponentRotor : room?.creatorRotor)
+    : null;
+
+  const { data: opponentBeyObj } = useSuiClientQuery(
+    'getObject',
+    {
+      id: opponentRotorId ?? '',
+      options: { showContent: true, showType: true },
+    },
+    { enabled: !!opponentRotorId },
+  );
+
+  const opponentBey: BeyCardData | null = useMemo(() => {
+    if (!opponentBeyObj?.data?.content) return null;
+    const content = opponentBeyObj.data.content;
+    if (content.dataType !== 'moveObject') return null;
+    const fields = content.fields as Record<string, unknown>;
+    return {
+      objectId: opponentBeyObj.data.objectId ?? '',
+      name: String(fields.name ?? 'Opponent Rotor'),
+      wins: Number(fields.wins ?? 0),
+      losses: Number(fields.losses ?? 0),
+      burstFinishes: Number(fields.burst_finishes ?? 0),
+      xtremeFinishes: Number(fields.xtreme_finishes ?? 0),
+    };
+  }, [opponentBeyObj]);
 
   if (!account) {
     return (
@@ -177,7 +249,7 @@ export default function BattlePage() {
                     placeholder="ROOM CODE"
                     style={{
                       flex: 1, padding: '10px 14px', borderRadius: 8,
-                      background: 'var(--surface-1)', border: '1px solid var(--border)',
+                      background: 'var(--void)', border: '1px solid var(--border)',
                       color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 16,
                       letterSpacing: '0.15em', textTransform: 'uppercase',
                     }}
@@ -206,48 +278,200 @@ export default function BattlePage() {
           )}
 
           {/* Phase: Select Rotor */}
-          {phase === 'select' && (
-            <div className="panel" style={{ padding: 28 }}>
-              <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 12 }}>{isZh ? '選擇你的陀螺' : 'Select Your Rotor'}</div>
-              {beys.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: 20 }}>
-                  <p className="muted">{isZh ? '你還沒有組裝好的陀螺。先去註冊一個！' : 'No assembled rotors. Register one first!'}</p>
-                  <a href="/register" className="btn btn-primary" style={{ marginTop: 12 }}>{isZh ? '註冊陀螺' : 'Register Rotor'}</a>
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {beys.map((b) => (
-                    <button
-                      key={b.objectId}
-                      onClick={() => setSelectedRotor(b.objectId)}
-                      className={selectedRotor === b.objectId ? 'btn btn-primary' : 'btn btn-ghost'}
-                      style={{ padding: '12px 16px', textAlign: 'left', justifyContent: 'flex-start', fontSize: 13 }}
+          {phase === 'select' && (() => {
+            const lastUsedId = getLastUsedRotor();
+            const myRotorId = account ? (room?.creator === account.address ? room?.creatorRotor : room?.opponentRotor) : null;
+            const myConfirmed = !!myRotorId;
+            const opponentConfirmed = !!opponentRotorId;
+            return (
+              <div style={{ display: 'grid', gap: 16 }}>
+                {/* Opponent status strip */}
+                {(opponentAddress || opponentConfirmed) && (
+                  <div
+                    className="panel"
+                    style={{
+                      padding: 18,
+                      borderColor: opponentConfirmed ? 'var(--wood)' : 'var(--border-soft)',
+                    }}
+                  >
+                    <div
+                      className="t-mono"
+                      style={{
+                        fontSize: 10,
+                        letterSpacing: '0.12em',
+                        color: opponentConfirmed ? 'var(--wood)' : 'var(--text-dim)',
+                        marginBottom: 8,
+                      }}
                     >
-                      <span className="t-mono" style={{ marginRight: 8 }}>{b.objectId.slice(0, 8)}...</span>
-                      {String(b.fields.name ?? 'Rotor')}
-                    </button>
-                  ))}
-                  <button onClick={handleSelectRotor} disabled={!selectedRotor} className="btn btn-primary" style={{ marginTop: 8, padding: '12px 0' }}>
-                    {isZh ? '確認選擇' : 'Confirm Selection'}
-                  </button>
+                      {isZh ? '對手' : 'OPPONENT'}{opponentAddress ? ` · ${opponentAddress.slice(0, 6)}…${opponentAddress.slice(-4)}` : ''}
+                    </div>
+                    {opponentBey ? (
+                      <BeyCard bey={opponentBey} compact />
+                    ) : opponentConfirmed ? (
+                      <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+                        {isZh ? '對手已選好，正在載入資料…' : 'Opponent ready, fetching…'}
+                      </p>
+                    ) : (
+                      <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+                        {isZh ? '對手還在挑陀螺…' : 'Opponent is still choosing…'}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* My rotor selector */}
+                <div className="panel" style={{ padding: 28 }}>
+                  <div
+                    className="sf-flex sf-justify-between sf-items-center"
+                    style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}
+                  >
+                    <div className="t-eyebrow" style={{ color: 'var(--gold)' }}>
+                      {isZh ? '選擇你的陀螺' : 'Select Your Rotor'} · {beys.length}
+                    </div>
+                    {myConfirmed && (
+                      <span
+                        className="t-mono"
+                        style={{
+                          fontSize: 10,
+                          color: 'var(--wood)',
+                          letterSpacing: '0.1em',
+                        }}
+                      >
+                        ✓ {isZh ? '已確認' : 'CONFIRMED'}
+                      </span>
+                    )}
+                  </div>
+
+                  {beys.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: 32 }}>
+                      <p className="muted" style={{ marginBottom: 18 }}>
+                        {isZh ? '你還沒有組裝好的陀螺。先去註冊一個！' : 'No assembled rotors. Register one first!'}
+                      </p>
+                      <a href="/register" className="btn btn-primary">
+                        {isZh ? '註冊陀螺' : 'Register Rotor'}
+                      </a>
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                          gap: 12,
+                          marginBottom: 18,
+                        }}
+                      >
+                        {beys.map((b) => {
+                          const card = beyFromInventory(b);
+                          return (
+                            <BeyCard
+                              key={b.objectId}
+                              bey={card}
+                              selected={selectedRotor === b.objectId}
+                              lastUsed={lastUsedId === b.objectId && selectedRotor !== b.objectId}
+                              onClick={myConfirmed ? undefined : () => setSelectedRotor(b.objectId)}
+                            />
+                          );
+                        })}
+                      </div>
+                      {!myConfirmed && (
+                        <button
+                          onClick={handleSelectRotor}
+                          disabled={!selectedRotor}
+                          className="btn btn-primary"
+                          style={{ width: '100%', padding: '14px 0', fontSize: 14 }}
+                        >
+                          {isZh ? '確認選擇' : 'Confirm Selection'}
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {/* Phase: Physical Battle in Progress */}
-          {phase === 'battle' && (
-            <div className="panel" style={{ padding: 32, textAlign: 'center', border: '1px solid var(--fire)' }}>
-              <div style={{ fontSize: 64, marginBottom: 16 }}>🔥</div>
-              <div className="t-h3" style={{ marginBottom: 8 }}>{isZh ? '開始實體對戰！' : 'Battle Now!'}</div>
-              <p className="muted" style={{ fontSize: 14, marginBottom: 24 }}>
-                {isZh ? '在現實中發射你們的陀螺。結束後由勝者提交結果。' : 'Launch your Beyblades in real life. The winner submits the result after.'}
-              </p>
-              <button onClick={() => setPhase('submit')} className="btn btn-primary" style={{ padding: '12px 32px' }}>
-                {isZh ? '對戰結束，提交結果' : 'Battle Over — Submit Result'}
-              </button>
-            </div>
-          )}
+          {phase === 'battle' && (() => {
+            const myBey = beys.find((b) => b.objectId === selectedRotor);
+            const myCard = myBey ? beyFromInventory(myBey) : null;
+            return (
+              <div style={{ display: 'grid', gap: 16 }}>
+                {/* Matchup: my rotor vs opponent's rotor */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto 1fr',
+                    gap: 14,
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div
+                      className="t-mono"
+                      style={{ fontSize: 10, color: 'var(--gold)', letterSpacing: '0.12em', marginBottom: 6 }}
+                    >
+                      {isZh ? '你' : 'YOU'}
+                    </div>
+                    {myCard ? <BeyCard bey={myCard} compact /> : null}
+                  </div>
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: '50%',
+                      border: '1px solid var(--gold)',
+                      display: 'grid',
+                      placeItems: 'center',
+                      background: 'radial-gradient(circle, rgba(212,175,55,0.18), transparent)',
+                      boxShadow: '0 0 20px rgba(212,175,55,0.3)',
+                      fontFamily: 'var(--f-display)',
+                      fontWeight: 700,
+                      fontSize: 20,
+                      color: 'var(--gold)',
+                    }}
+                  >
+                    VS
+                  </div>
+                  <div>
+                    <div
+                      className="t-mono"
+                      style={{ fontSize: 10, color: 'var(--blood)', letterSpacing: '0.12em', marginBottom: 6, textAlign: 'right' }}
+                    >
+                      {isZh ? '對手' : 'OPPONENT'}
+                    </div>
+                    {opponentBey ? <BeyCard bey={opponentBey} compact /> : (
+                      <p className="muted" style={{ fontSize: 12, margin: 0, textAlign: 'right' }}>
+                        {isZh ? '載入中…' : 'loading…'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div
+                  className="panel"
+                  style={{ padding: 32, textAlign: 'center', border: '1px solid var(--fire)' }}
+                >
+                  <div style={{ fontSize: 64, marginBottom: 16 }}>🔥</div>
+                  <div className="t-h3" style={{ marginBottom: 8 }}>
+                    {isZh ? '開始實體對戰！' : 'Battle Now!'}
+                  </div>
+                  <p className="muted" style={{ fontSize: 14, marginBottom: 24 }}>
+                    {isZh
+                      ? '在現實中發射你們的陀螺。結束後由勝者提交結果。'
+                      : 'Launch your Beyblades in real life. The winner submits the result after.'}
+                  </p>
+                  <button
+                    onClick={() => setPhase('submit')}
+                    className="btn btn-primary"
+                    style={{ padding: '12px 32px' }}
+                  >
+                    {isZh ? '對戰結束，提交結果' : 'Battle Over — Submit Result'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Phase: Submit Result */}
           {phase === 'submit' && (
