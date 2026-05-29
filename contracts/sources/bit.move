@@ -80,7 +80,8 @@ module spinforge::bit {
         d == 0 || d == 4 || d == 6 || d == 8 || d == 10 || d == 12
     }
 
-    public fun add_xp(bit: &mut Bit, amount: u32) {
+    // `public(package)` to match blade::add_xp — owners cannot self-grant XP. (H-3)
+    public(package) fun add_xp(bit: &mut Bit, amount: u32) {
         bit.xp = bit.xp + amount;
     }
 

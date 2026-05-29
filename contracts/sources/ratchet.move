@@ -73,7 +73,8 @@ module spinforge::ratchet {
         h == 50 || h == 55 || h == 60 || h == 70 || h == 80 || h == 85
     }
 
-    public fun add_xp(ratchet: &mut Ratchet, amount: u32) {
+    // `public(package)` to match blade::add_xp — owners cannot self-grant XP. (H-3)
+    public(package) fun add_xp(ratchet: &mut Ratchet, amount: u32) {
         ratchet.xp = ratchet.xp + amount;
     }
 

@@ -15,6 +15,7 @@ module spinforge::battle {
     const EMatchComplete: u64 = 7;
     const EInvalidLockTightness: u64 = 8;
     const ENotBothCommitted: u64 = 9;
+    const EInvalidDeckSize: u64 = 10;
 
     // ===== Constants =====
     // Match states
@@ -129,6 +130,12 @@ module spinforge::battle {
         deck_b: vector<ID>,
         ctx: &mut TxContext,
     ): Match {
+        // L-1: used_a/used_b are length-3; reject any deck that isn't exactly 3
+        // so select_bey can never index past the used vector and abort.
+        assert!(
+            vector::length(&deck_a) == 3 && vector::length(&deck_b) == 3,
+            EInvalidDeckSize,
+        );
         let match_obj = Match {
             id: object::new(ctx),
             player_a,

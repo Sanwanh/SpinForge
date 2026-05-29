@@ -34,7 +34,16 @@ module spinforge::pack {
         ctx: &mut TxContext,
     ) {
         assert!(coin::value(&payment) >= PACK_COST, EInsufficientPayment);
-        coin::burn(treasury_cap, payment);
+        // L-3: burn only the exact cost; refund any overpayment to the buyer
+        // instead of silently destroying it.
+        let mut payment = payment;
+        let cost = coin::split(&mut payment, PACK_COST, ctx);
+        coin::burn(treasury_cap, cost);
+        if (coin::value(&payment) > 0) {
+            transfer::public_transfer(payment, ctx.sender());
+        } else {
+            coin::destroy_zero(payment);
+        };
 
         let mut gen = random::new_generator(r, ctx);
 

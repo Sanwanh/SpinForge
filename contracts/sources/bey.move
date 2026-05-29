@@ -75,20 +75,23 @@ module spinforge::bey {
     }
 
     // ===== Stat Update =====
+    // `public(package)` only: PTB `moveCall` cannot target package-visible
+    // functions, so a Bey owner cannot self-inflate stats. Only an in-package
+    // (AdminCap-gated) battle-settlement flow may record results. (H-3)
 
-    public fun record_win(bey: &mut Bey) {
+    public(package) fun record_win(bey: &mut Bey) {
         bey.wins = bey.wins + 1;
     }
 
-    public fun record_loss(bey: &mut Bey) {
+    public(package) fun record_loss(bey: &mut Bey) {
         bey.losses = bey.losses + 1;
     }
 
-    public fun record_xtreme_finish(bey: &mut Bey) {
+    public(package) fun record_xtreme_finish(bey: &mut Bey) {
         bey.xtreme_finishes = bey.xtreme_finishes + 1;
     }
 
-    public fun record_burst_finish(bey: &mut Bey) {
+    public(package) fun record_burst_finish(bey: &mut Bey) {
         bey.burst_finishes = bey.burst_finishes + 1;
     }
 

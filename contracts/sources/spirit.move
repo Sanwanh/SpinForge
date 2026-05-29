@@ -1,5 +1,6 @@
 module spinforge::spirit {
     use sui::event;
+    use spinforge::admin::AdminCap;
 
     // ===== Error Codes =====
     const EInvalidBeast: u64 = 0;
@@ -47,7 +48,10 @@ module spinforge::spirit {
 
     /// Mint a soulbound spirit avatar. Uses `transfer::transfer` (not public_transfer)
     /// because SpiritAvatar lacks `store`.
+    /// AdminCap-gated (H-1): only the milestone-reward authority may mint;
+    /// previously anyone could mint a Legendary Koryu for free via a PTB.
     public fun mint(
+        _admin: &AdminCap,
         beast: u8,
         tier: u8,
         recipient: address,

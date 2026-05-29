@@ -2,6 +2,14 @@ module spinforge::forge_token {
     use sui::coin::{Self, TreasuryCap, Coin};
     use sui::event;
 
+    // ===== Error Codes =====
+    /// A single mint call exceeded the per-call ceiling. (H-2)
+    const EMintAmountTooLarge: u64 = 0;
+
+    // ===== Constants =====
+    /// Hard ceiling on a single mint call (100,000 FORGE at 9 decimals).
+    const MAX_MINT_PER_CALL: u64 = 100_000_000_000_000;
+
     // ===== OTW =====
 
     /// One-Time Witness for Coin<FORGE_TOKEN>
@@ -39,6 +47,7 @@ module spinforge::forge_token {
         recipient: address,
         ctx: &mut TxContext,
     ) {
+        assert!(amount <= MAX_MINT_PER_CALL, EMintAmountTooLarge);
         let coin = coin::mint(treasury_cap, amount, ctx);
         event::emit(ForgeMinted { amount, recipient });
         transfer::public_transfer(coin, recipient);
@@ -49,6 +58,7 @@ module spinforge::forge_token {
         amount: u64,
         ctx: &mut TxContext,
     ): Coin<FORGE_TOKEN> {
+        assert!(amount <= MAX_MINT_PER_CALL, EMintAmountTooLarge);
         coin::mint(treasury_cap, amount, ctx)
     }
 

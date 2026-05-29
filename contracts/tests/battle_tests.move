@@ -66,6 +66,24 @@ module spinforge::battle_tests {
     }
 
     #[test]
+    #[expected_failure(abort_code = 10)] // EInvalidDeckSize (L-1)
+    fun test_create_match_rejects_wrong_deck_size() {
+        let mut scenario = test_scenario::begin(PLAYER_A);
+        let (deck_a, _deck_b, stadium_id) = create_test_ids(&mut scenario);
+
+        let ctx = test_scenario::ctx(&mut scenario);
+        // deck_b has only 2 entries — must abort instead of risking an
+        // out-of-bounds on the length-3 `used_b` vector later.
+        let short_deck_b = vector[*vector::borrow(&deck_a, 0), *vector::borrow(&deck_a, 1)];
+        let match_obj = battle::create_match(
+            PLAYER_A, PLAYER_B, stadium_id, deck_a, short_deck_b, ctx,
+        );
+
+        battle::destroy_match(match_obj);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
     fun test_select_bey_and_start_round() {
         let mut scenario = test_scenario::begin(PLAYER_A);
         let (deck_a, deck_b, stadium_id) = create_test_ids(&mut scenario);

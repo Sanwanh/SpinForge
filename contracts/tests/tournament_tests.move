@@ -85,6 +85,28 @@ module spinforge::tournament_tests {
     }
 
     #[test]
+    #[expected_failure(abort_code = 9)] // EInvalidWinners (M-3)
+    fun test_advance_round_rejects_unregistered_winner() {
+        let mut scenario = test_scenario::begin(ORGANIZER);
+        let ctx = test_scenario::ctx(&mut scenario);
+
+        let mut tournament = tournament::create_tournament(b"Test", 4, 0, ctx);
+        tournament::add_player_for_testing(&mut tournament, PLAYER_1);
+        tournament::add_player_for_testing(&mut tournament, PLAYER_2);
+        tournament::start_tournament(&mut tournament, test_scenario::ctx(&mut scenario));
+
+        // @0xFFFF never registered — must be rejected, not crowned champion.
+        let winners = vector[@0xFFFF];
+        tournament::advance_round(
+            &mut tournament, winners,
+            test_scenario::ctx(&mut scenario),
+        );
+
+        tournament::destroy_for_testing(tournament);
+        test_scenario::end(scenario);
+    }
+
+    #[test]
     #[expected_failure(abort_code = 0)]
     fun test_advance_round_not_organizer() {
         let mut scenario = test_scenario::begin(ORGANIZER);
