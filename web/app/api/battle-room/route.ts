@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { kvGet, kvSet } from '@/lib/kv';
 
 interface BattleRoom {
   id: string;
@@ -18,18 +19,26 @@ interface BattleRoom {
   createdAt: number;
 }
 
-const rooms = new Map<string, BattleRoom>();
+const ROOM_TTL = 60 * 60; // rooms live 1 hour
+const roomKey = (id: string) => `room:${id}`;
 
 function generateId(): string {
   return Math.random().toString(36).substring(2, 10).toUpperCase();
 }
 
+async function getRoom(id: string): Promise<BattleRoom | null> {
+  if (!id) return null;
+  return kvGet<BattleRoom>(roomKey(id));
+}
+
+async function saveRoom(room: BattleRoom): Promise<void> {
+  await kvSet(roomKey(room.id), room, ROOM_TTL);
+}
+
+// Lobby browse is not supported on serverless (no shared index); the UI joins by
+// code, so this just returns an empty list.
 export async function GET() {
-  const list = Array.from(rooms.values())
-    .filter((r) => r.status === 'waiting')
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 20);
-  return NextResponse.json({ rooms: list });
+  return NextResponse.json({ rooms: [] });
 }
 
 export async function POST(request: NextRequest) {
@@ -53,24 +62,25 @@ export async function POST(request: NextRequest) {
         result: null,
         createdAt: Date.now(),
       };
-      rooms.set(id, room);
+      await saveRoom(room);
       return NextResponse.json({ success: true, roomId: id, room });
     }
 
     case 'join': {
       const { roomId, opponent } = body;
-      const room = rooms.get(roomId);
+      const room = await getRoom(roomId);
       if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
       if (room.status !== 'waiting') return NextResponse.json({ error: 'Room not available' }, { status: 400 });
       if (room.creator === opponent) return NextResponse.json({ error: 'Cannot join your own room' }, { status: 400 });
       room.opponent = opponent;
       room.status = 'ready';
+      await saveRoom(room);
       return NextResponse.json({ success: true, room });
     }
 
     case 'select-rotor': {
       const { roomId, player, rotorId, rotorName } = body;
-      const room = rooms.get(roomId);
+      const room = await getRoom(roomId);
       if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
       const nameStr = typeof rotorName === 'string' ? rotorName : null;
       if (player === room.creator) {
@@ -84,30 +94,33 @@ export async function POST(request: NextRequest) {
       }
 
       if (room.creatorRotor && room.opponentRotor) room.status = 'in_progress';
+      await saveRoom(room);
       return NextResponse.json({ success: true, room });
     }
 
     case 'submit-result': {
-      const { roomId, submitter, winner, finishType, scoreA, scoreB } = body;
-      const room = rooms.get(roomId);
+      const { roomId, winner, finishType, scoreA, scoreB } = body;
+      const room = await getRoom(roomId);
       if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
       room.result = { winner, finishType, scoreA, scoreB };
       room.status = 'submitted';
+      await saveRoom(room);
       return NextResponse.json({ success: true, room });
     }
 
     case 'confirm-result': {
-      const { roomId, confirmer } = body;
-      const room = rooms.get(roomId);
+      const { roomId } = body;
+      const room = await getRoom(roomId);
       if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
       if (!room.result) return NextResponse.json({ error: 'No result to confirm' }, { status: 400 });
       room.status = 'confirmed';
+      await saveRoom(room);
       return NextResponse.json({ success: true, room });
     }
 
     case 'get': {
       const { roomId } = body;
-      const room = rooms.get(roomId);
+      const room = await getRoom(roomId);
       if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
       return NextResponse.json({ room });
     }

@@ -52,11 +52,23 @@ export function assembleBey(
   return tx;
 }
 
-export function disassembleBey(beyId: string): Transaction {
+export function disassembleBey(beyId: string, sender: string): Transaction {
   const tx = new Transaction();
-  tx.moveCall({
+  // disassemble returns the three parts; they must be transferred back or the tx fails.
+  const [blade, ratchet, bit] = tx.moveCall({
     target: `${PACKAGE_ID}::bey::disassemble`,
     arguments: [tx.object(beyId)],
+  });
+  tx.transferObjects([blade, ratchet, bit], sender);
+  return tx;
+}
+
+// Permanently burn a single part (Blade / Ratchet / Bit) the player owns.
+export function discardPart(partId: string, type: 'blade' | 'ratchet' | 'bit'): Transaction {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${PACKAGE_ID}::${type}::destroy`,
+    arguments: [tx.object(partId)],
   });
   return tx;
 }

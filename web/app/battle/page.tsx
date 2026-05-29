@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useCurrentAccount, useSuiClientQuery } from '@mysten/dapp-kit';
 import { useInventory } from '@/hooks/useInventory';
 import { PageHeader, Section, Tag, Corners, Stat } from '@/components/design/atoms';
@@ -11,6 +11,8 @@ import {
   setLastUsedRotor,
 } from '@/components/design/BeyCard';
 import { useT } from '@/lib/i18n';
+import { QRCodeSVG } from 'qrcode.react';
+import { useAuthSig } from '@/lib/use-auth-sig';
 
 type Phase = 'create' | 'waiting' | 'select' | 'battle' | 'submit' | 'confirmed' | 'done';
 
@@ -46,6 +48,7 @@ const FINISH_LABELS: Record<number, string> = {
 
 export default function BattlePage() {
   const account = useCurrentAccount();
+  const getAuthSig = useAuthSig();
   const { beys } = useInventory();
   const t = useT();
   const isZh = t.nav.home === '首頁';
@@ -72,6 +75,7 @@ export default function BattlePage() {
   const [scoreB, setScoreB] = useState(0);
   const [error, setError] = useState('');
   const [onChainId, setOnChainId] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const api = useCallback(async (body: Record<string, unknown>) => {
     const res = await fetch('/api/battle-room', {
@@ -135,7 +139,8 @@ export default function BattlePage() {
     if (!account) return;
     await api({ action: 'confirm-result', roomId, confirmer: account.address });
 
-    // Commit to chain
+    // Commit to chain — sign so the server can verify we're a participant.
+    const auth = await getAuthSig();
     const res = await fetch('/api/submit-result', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -145,6 +150,9 @@ export default function BattlePage() {
         rotorA: room?.creatorRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
         rotorB: room?.opponentRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
         winner, finishType, scoreA, scoreB,
+        submitter: auth.address,
+        authMessage: auth.authMessage,
+        authSignature: auth.authSignature,
       }),
     });
     const data = await res.json();
@@ -154,7 +162,7 @@ export default function BattlePage() {
     } else {
       setError(data.error);
     }
-  }, [account, roomId, room, winner, finishType, scoreA, scoreB, api]);
+  }, [account, getAuthSig, roomId, room, winner, finishType, scoreA, scoreB, api]);
 
   // Poll for room updates during waiting / select / submit phases so each
   // player sees the other's selection + result without manual refresh.
@@ -169,6 +177,38 @@ export default function BattlePage() {
     }, 3000);
     return () => clearInterval(interval);
   }, [phase, roomId, api]);
+
+  // Deep-link from the Friends page: ?join=CODE auto-joins as opponent,
+  // ?room=CODE resumes as the room creator (waiting for the friend to join).
+  const deepLinkHandled = useRef(false);
+  useEffect(() => {
+    if (deepLinkHandled.current || !account) return;
+    const params = new URLSearchParams(window.location.search);
+    const joinParam = params.get('join');
+    const roomParam = params.get('room');
+    if (!joinParam && !roomParam) return;
+    deepLinkHandled.current = true;
+    (async () => {
+      if (joinParam) {
+        const data = await api({ action: 'join', roomId: joinParam, opponent: account.address });
+        const target = data.room ?? (await api({ action: 'get', roomId: joinParam })).room;
+        if (target) {
+          setRoomId(joinParam);
+          setRoom(target);
+          setPhase('select');
+        } else if (data.error) {
+          setError(data.error);
+        }
+      } else if (roomParam) {
+        const got = await api({ action: 'get', roomId: roomParam });
+        if (got.room) {
+          setRoomId(roomParam);
+          setRoom(got.room);
+          setPhase(got.room.status === 'waiting' ? 'waiting' : 'select');
+        }
+      }
+    })();
+  }, [account, api]);
 
   // Opponent's bey object (fetched directly from chain so we always see
   // their real name + stats — independent of what the room cache claims).
@@ -270,10 +310,31 @@ export default function BattlePage() {
               <div className="t-display" style={{ fontSize: 48, letterSpacing: '0.2em', color: 'var(--gold)' }}>
                 {roomId}
               </div>
-              <p className="muted" style={{ fontSize: 13, marginTop: 12 }}>
-                {isZh ? '把這個代碼給你的對手，等他加入...' : 'Share this code with your opponent...'}
+
+              <div style={{ background: '#fff', padding: 10, borderRadius: 12, display: 'inline-block', margin: '18px 0 4px', lineHeight: 0 }}>
+                <QRCodeSVG
+                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}/battle?join=${roomId}`}
+                  size={140}
+                  bgColor="#ffffff"
+                  fgColor="#0a0e17"
+                  level="M"
+                />
+              </div>
+              <p className="muted" style={{ fontSize: 13, marginTop: 8 }}>
+                {isZh ? '讓對手掃描 QR,或把邀請連結 / 代碼傳給他' : 'Have your opponent scan the QR, or send them the link / code'}
               </p>
-              <div style={{ marginTop: 16, width: 24, height: 24, border: '2px solid var(--gold)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '16px auto 0' }} />
+              <button
+                onClick={() => {
+                  navigator.clipboard?.writeText(`${window.location.origin}/battle?join=${roomId}`);
+                  setLinkCopied(true);
+                  setTimeout(() => setLinkCopied(false), 1500);
+                }}
+                className="btn btn-primary"
+                style={{ marginTop: 12, padding: '10px 24px' }}
+              >
+                {linkCopied ? (isZh ? '✓ 連結已複製' : '✓ Link copied') : (isZh ? '複製邀請連結' : 'Copy invite link')}
+              </button>
+              <div style={{ width: 24, height: 24, border: '2px solid var(--gold)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '20px auto 0' }} />
             </div>
           )}
 
@@ -345,11 +406,16 @@ export default function BattlePage() {
                   {beys.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: 32 }}>
                       <p className="muted" style={{ marginBottom: 18 }}>
-                        {isZh ? '你還沒有組裝好的陀螺。先去註冊一個！' : 'No assembled rotors. Register one first!'}
+                        {isZh ? '你還沒有可出戰的陀螺。用卡包零件去工坊組裝,或註冊一台實體陀螺。' : 'No battle-ready rotor yet. Assemble pack parts in the Workshop, or register a physical one.'}
                       </p>
-                      <a href="/register" className="btn btn-primary">
-                        {isZh ? '註冊陀螺' : 'Register Rotor'}
-                      </a>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                        <a href="/workshop" className="btn btn-primary">
+                          {isZh ? '前往工坊組裝' : 'Assemble in Workshop'}
+                        </a>
+                        <a href="/register" className="btn btn-ghost">
+                          {isZh ? '註冊實體陀螺' : 'Register Physical'}
+                        </a>
+                      </div>
                     </div>
                   ) : (
                     <>
