@@ -26,9 +26,6 @@ export default function AuthCallbackPage() {
           return;
         }
 
-        const payload = JSON.parse(atob(idToken.split('.')[1]));
-        const { sub, email } = payload;
-
         const stored = sessionStorage.getItem('zklogin_ephemeral');
         if (!stored) {
           setStatus('error');
@@ -38,15 +35,29 @@ export default function AuthCallbackPage() {
 
         const { randomness, nonce, maxEpoch } = JSON.parse(stored);
 
+        // H-11: verify the token server-side (Google JWKS + nonce) and get the
+        // REAL zkLogin address. Never trust the unverified token client-side.
+        const vRes = await fetch('/api/auth/zklogin-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken, nonce }),
+        });
+        const vData = await vRes.json();
+        if (!vRes.ok) {
+          setStatus('error');
+          setErrorMsg(vData.error ?? 'Could not verify Google sign-in.');
+          return;
+        }
+
         const session: ZkLoginSession = {
           ephemeralKeypair: stored,
           randomness,
           nonce,
           maxEpoch,
           jwt: idToken,
-          sub,
-          email: email ?? 'unknown',
-          address: `zklogin:${sub.slice(0, 16)}`,
+          sub: vData.sub,
+          email: vData.email ?? 'unknown',
+          address: vData.address,
         };
 
         storeSession(session);

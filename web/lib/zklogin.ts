@@ -22,9 +22,13 @@ export interface ZkLoginSession {
 
 const SESSION_KEY = 'spinforge_zklogin_session';
 
+// M-9: keep the session (which holds the ephemeral secret key + raw JWT) in
+// sessionStorage, NOT localStorage. sessionStorage is cleared when the tab
+// closes, so a stolen/XSS'd secret has a far smaller persistence window and is
+// not shared across tabs. Also clear any legacy localStorage copy.
 export function getStoredSession(): ZkLoginSession | null {
   if (typeof window === 'undefined') return null;
-  const raw = localStorage.getItem(SESSION_KEY);
+  const raw = sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(SESSION_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as ZkLoginSession;
@@ -34,11 +38,13 @@ export function getStoredSession(): ZkLoginSession | null {
 }
 
 export function storeSession(session: ZkLoginSession): void {
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
 export function clearSession(): void {
-  localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
 }
 
 export async function getCurrentEpoch(): Promise<number> {
