@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { verifyAuth } from '@/lib/auth-verify';
+import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
 
 const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 const SUI_CLOCK = '0x6';
+const MAX_NAME_LEN = 32;
 
 async function rpc(method: string, params: unknown[]) {
   const res = await fetch(RPC, {
@@ -19,10 +22,22 @@ async function rpc(method: string, params: unknown[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { address, displayName } = await request.json();
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+    }
+    const limited = await rateLimited(request, 'create-profile', 20, 3600);
+    if (limited) return limited;
+    const { address, displayName, authMessage, authSignature } = await request.json();
     if (!address || !displayName) {
       return NextResponse.json({ error: 'Missing address or displayName' }, { status: 400 });
     }
+    // L-5: bound the display name (the profile is minted to the caller's address).
+    if (typeof displayName !== 'string' || displayName.length > MAX_NAME_LEN) {
+      return NextResponse.json({ error: 'Invalid display name' }, { status: 400 });
+    }
+    // C-2: only the address owner may create their own profile.
+    const auth = await verifyAuth(address, authMessage, authSignature);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
     const { secretKey } = decodeSuiPrivateKey(ADMIN_KEY);
     const keypair = Ed25519Keypair.fromSecretKey(secretKey);
@@ -66,6 +81,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, profileId, digest: result.result?.digest });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
+    return safeError(err, 'Profile creation failed');
   }
 }

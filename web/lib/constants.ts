@@ -1,20 +1,29 @@
 // ---- Network ----
 export const SUI_NETWORK = 'testnet' as const;
-export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x510d9b3e4b50e17af61530bb18eeccfd6e897e16db9257d38612214c11f78bf4';
-export const ORIGINAL_PACKAGE_ID = '0xcb4ae0641d8cdf704bf42e3254a3d8463256dd6e77fb005250af16702466ce48';
+// Hardened package, fresh publish 2026-05-29 (audit remediation, Phase B).
+// Fresh publish => PACKAGE_ID and ORIGINAL_PACKAGE_ID are the same.
+export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790';
+export const ORIGINAL_PACKAGE_ID = '0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790';
+
+// Treasury / admin address — pack payments are sent here (real SPARK charge for
+// wallet players). This is a public address, never the private key.
+export const TREASURY_ADDRESS = '0x6728bc6ed415fad991328142c556e6130c2866f999b07eabec17e92efd1941fb';
+
+// Pack cost in MIST (9 decimals): 100 SPARK.
+export const PACK_COST_MIST = 100_000_000_000n;
 
 // ---- Deployed Object IDs ----
-export const ADMIN_CAP_ID = '0x6aa381e305390071088b576812732f934722fd11951b702ee42d1c0e2c774078';
-export const GAME_CONFIG_ID = '0x8817f5c6419ef94db9f3b0655c8f219f3c28d3b8f4c0e22f305bfafa5f7d1e45';
-export const SPARK_TREASURY_CAP_ID = '0x40bcb3ceb5f8e1e19f46388f418bccf108e5cd45b9761eec3f6aa0add9c1f45a';
-export const FORGE_TREASURY_CAP_ID = '0xd7460f080363a217383d60c9361f08ff6a10175c8a5ebbf1338508d921bdccd2';
-export const TRANSFER_POLICY_ID = '0x5246d426451a76b966bf54902da9682879346277a6969f69c08552765c72ab6c';
+export const ADMIN_CAP_ID = '0xee5f4af8c32c0eab9cb1d85e1f96bebfe807c1e760c05c62d1961e55a9579ba8';
+export const GAME_CONFIG_ID = '0x39475b0a718321e4451715290facd09b3ec6ced1fb32e1c47f50ca6757258be0';
+export const SPARK_TREASURY_CAP_ID = '0x92e420d720485efa629681a15852d236fa31732b1d98e97b96a9a8f7749fa558';
+export const FORGE_TREASURY_CAP_ID = '0x3a5a4049e11cd1f0570333a41611eedf04d8bce99c9d080d5028d640c557e415';
+export const TRANSFER_POLICY_ID = '0x4df95c57d64d494025b433a770f4b55ad772b1b2e69aa0af0831afbbff87ba94';
 export const SUI_RANDOM_ID = '0x8';
 // SPARK_TOKEN type is bound to the ORIGINAL defining package, not upgraded versions.
 export const SPARK_TYPE = `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN`;
 
-// PlayerProfile lives in its own package (separate deployment from spark/blade/ratchet/bit).
-export const PROFILE_PACKAGE_ID = '0x336b411e970ca133219d295340f107be30e2e2398d8ad3c81149fa806153539a';
+// player_profile now lives in the main hardened package (single deployment).
+export const PROFILE_PACKAGE_ID = ORIGINAL_PACKAGE_ID;
 export const PROFILE_TYPE = `${PROFILE_PACKAGE_ID}::player_profile::PlayerProfile`;
 
 // ---- Spirit Beasts ----

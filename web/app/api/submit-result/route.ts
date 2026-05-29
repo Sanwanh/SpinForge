@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { verifyAuth } from '@/lib/auth-verify';
+import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
 
 const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
@@ -19,10 +21,34 @@ async function rpc(method: string, params: unknown[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { playerA, playerB, rotorA, rotorB, winner, finishType, scoreA, scoreB } = await request.json();
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+    }
+    const limited = await rateLimited(request, 'submit-result', 30, 3600);
+    if (limited) return limited;
+    const { playerA, playerB, rotorA, rotorB, winner, finishType, scoreA, scoreB, submitter, authMessage, authSignature } = await request.json();
 
     if (!playerA || !playerB || !rotorA || !rotorB || !winner) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // C-2/H-10: the submitter must prove control of their address AND be one of
+    // the two participants — you cannot file a result for a match you're not in.
+    const auth = await verifyAuth(submitter, authMessage, authSignature);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
+    if (submitter !== playerA && submitter !== playerB) {
+      return NextResponse.json({ error: 'Submitter is not a participant' }, { status: 403 });
+    }
+
+    // L-5: winner must be one of the two players; scores bounded to a sane range.
+    if (winner !== playerA && winner !== playerB) {
+      return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
+    }
+    const sA = Number(scoreA ?? 7);
+    const sB = Number(scoreB ?? 0);
+    const ft = Number(finishType ?? 0);
+    if (![sA, sB].every((s) => Number.isInteger(s) && s >= 0 && s <= 15) || !Number.isInteger(ft) || ft < 0 || ft > 3) {
+      return NextResponse.json({ error: 'Invalid scores or finish type' }, { status: 400 });
     }
 
     const { secretKey } = decodeSuiPrivateKey(ADMIN_KEY);
@@ -43,9 +69,9 @@ export async function POST(request: NextRequest) {
         tx.pure.id(rotorA),
         tx.pure.id(rotorB),
         tx.pure.address(winner),
-        tx.pure.u8(finishType ?? 0),
-        tx.pure.u8(scoreA ?? 7),
-        tx.pure.u8(scoreB ?? 0),
+        tx.pure.u8(ft),
+        tx.pure.u8(sA),
+        tx.pure.u8(sB),
         tx.object(SUI_CLOCK),
       ],
     });
@@ -80,6 +106,6 @@ export async function POST(request: NextRequest) {
       message: 'Battle record created on-chain.',
     });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
+    return safeError(err, 'Result submission failed');
   }
 }

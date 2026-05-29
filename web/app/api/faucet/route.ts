@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { verifyAuth } from '@/lib/auth-verify';
+import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
+import { kvSetNX, kvDel } from '@/lib/kv';
 
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
-const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0xcb4ae0641d8cdf704bf42e3254a3d8463256dd6e77fb005250af16702466ce48';
-const SPARK_TREASURY_CAP = '0x40bcb3ceb5f8e1e19f46388f418bccf108e5cd45b9761eec3f6aa0add9c1f45a';
+const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790';
+const SPARK_TREASURY_CAP = '0x92e420d720485efa629681a15852d236fa31732b1d98e97b96a9a8f7749fa558';
 const RPC_URL = 'https://fullnode.testnet.sui.io:443';
 const FAUCET_AMOUNT = '500000000000';
-
-const claimed = new Set<string>();
+const CLAIM_KEY = (addr: string) => `faucet_claimed:${addr}`;
 
 async function rpc(method: string, params: unknown[]) {
   const res = await fetch(RPC_URL, {
@@ -19,18 +21,33 @@ async function rpc(method: string, params: unknown[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { address } = await request.json();
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+    }
+    const limited = await rateLimited(request, 'faucet', 10, 3600);
+    if (limited) return limited;
+
+    const { address, authMessage, authSignature } = await request.json();
 
     if (!address || typeof address !== 'string') {
       return NextResponse.json({ error: 'Missing address' }, { status: 400 });
+    }
+
+    // C-2: prove the caller controls `address` before the admin mints to it.
+    const auth = await verifyAuth(address, authMessage, authSignature);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
     }
 
     if (!ADMIN_PRIVATE_KEY) {
       return NextResponse.json({ error: 'Faucet not configured' }, { status: 500 });
     }
 
-    if (claimed.has(address)) {
-      return NextResponse.json({ error: 'Already claimed. One starter pack per address.' }, { status: 400 });
+    // H-5: atomic one-claim-per-address (cross-instance once Redis is configured).
+    // Reserve first; release below if the mint fails.
+    const firstClaim = await kvSetNX(CLAIM_KEY(address), 60 * 60 * 24 * 365);
+    if (!firstClaim) {
+      return NextResponse.json({ error: 'Already claimed. One faucet grant per address.' }, { status: 400 });
     }
 
     const { Ed25519Keypair } = await import('@mysten/sui/keypairs/ed25519');
@@ -67,15 +84,15 @@ export async function POST(request: NextRequest) {
     ]);
 
     if (result.error) {
-      return NextResponse.json({ error: result.error.message }, { status: 500 });
+      await kvDel(CLAIM_KEY(address));
+      return NextResponse.json({ error: 'Faucet transaction failed' }, { status: 500 });
     }
 
     const status = result.result?.effects?.status?.status;
     if (status !== 'success') {
+      await kvDel(CLAIM_KEY(address));
       return NextResponse.json({ error: `Transaction failed: ${status}` }, { status: 500 });
     }
-
-    claimed.add(address);
 
     return NextResponse.json({
       success: true,
@@ -84,7 +101,6 @@ export async function POST(request: NextRequest) {
       message: 'Claimed 500 SPARK! You can now open 5 packs.',
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return safeError(err, 'Faucet request failed');
   }
 }

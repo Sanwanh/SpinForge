@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { verifyAuth } from '@/lib/auth-verify';
+import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
 
 const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
-const ADMIN_CAP = '0x6aa381e305390071088b576812732f934722fd11951b702ee42d1c0e2c774078';
+const ADMIN_CAP = '0xee5f4af8c32c0eab9cb1d85e1f96bebfe807c1e760c05c62d1961e55a9579ba8';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 
 async function rpc(method: string, params: unknown[]) {
@@ -19,11 +21,20 @@ async function rpc(method: string, params: unknown[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { address, bladeName, spiritBeast, beyType, spinDirection, ratchetProng, ratchetHeight, bitName, bitCategory } = await request.json();
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+    }
+    const limited = await rateLimited(request, 'register-rotor', 30, 3600);
+    if (limited) return limited;
+    const { address, bladeName, spiritBeast, beyType, spinDirection, ratchetProng, ratchetHeight, bitName, bitCategory, authMessage, authSignature } = await request.json();
 
     if (!address || !bladeName) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+    // C-2: the AdminCap-signed mint goes to `address` — require that the caller
+    // controls it, so anonymous callers can't mint rotors to arbitrary wallets.
+    const auth = await verifyAuth(address, authMessage, authSignature);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
     const { secretKey } = decodeSuiPrivateKey(ADMIN_KEY);
     const keypair = Ed25519Keypair.fromSecretKey(secretKey);
@@ -88,6 +99,6 @@ export async function POST(request: NextRequest) {
       message: `Rotor registered on-chain! Your ${bladeName} now has a digital passport.`,
     });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
+    return safeError(err, 'Rotor registration failed');
   }
 }

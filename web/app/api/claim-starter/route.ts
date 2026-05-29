@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
+import { verifyAuth } from '@/lib/auth-verify';
+import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
+import { kvSetNX, kvDel } from '@/lib/kv';
 
 const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
-const ORIG_PKG = '0xcb4ae0641d8cdf704bf42e3254a3d8463256dd6e77fb005250af16702466ce48';
-const SPARK_CAP = '0x40bcb3ceb5f8e1e19f46388f418bccf108e5cd45b9761eec3f6aa0add9c1f45a';
+const ORIG_PKG = '0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790';
+const SPARK_CAP = '0x92e420d720485efa629681a15852d236fa31732b1d98e97b96a9a8f7749fa558';
 const SUI_RANDOM = '0x8';
 const RPC = 'https://fullnode.testnet.sui.io:443';
-
-const claimed = new Set<string>();
+const CLAIM_KEY = (addr: string) => `starter_claimed:${addr}`;
 
 async function rpc(method: string, params: unknown[]) {
   const res = await fetch(RPC, {
@@ -23,9 +25,18 @@ async function rpc(method: string, params: unknown[]) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { address } = await request.json();
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+    }
+    const limited = await rateLimited(request, 'claim-starter', 10, 3600);
+    if (limited) return limited;
+    const { address, authMessage, authSignature } = await request.json();
     if (!address) return NextResponse.json({ error: 'Missing address' }, { status: 400 });
-    if (claimed.has(address)) {
+    const auth = await verifyAuth(address, authMessage, authSignature);
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
+    // H-5: atomic one-per-address; released below on failure.
+    const firstClaim = await kvSetNX(CLAIM_KEY(address), 60 * 60 * 24 * 365);
+    if (!firstClaim) {
       return NextResponse.json({ error: 'Already claimed starter pack.' }, { status: 400 });
     }
 
@@ -58,6 +69,7 @@ export async function POST(request: NextRequest) {
     const adminCoins = await rpc('suix_getCoins', [admin, `${ORIG_PKG}::spark_token::SPARK_TOKEN`, null, 1]);
     const adminCoin = adminCoins.result?.data?.[0]?.coinObjectId;
     if (!adminCoin) {
+      await kvDel(CLAIM_KEY(address));
       return NextResponse.json({ error: 'Admin has no SPARK' }, { status: 500 });
     }
 
@@ -97,8 +109,6 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
-    claimed.add(address);
-
     return NextResponse.json({
       success: true,
       spark: 500,
@@ -107,6 +117,6 @@ export async function POST(request: NextRequest) {
       message: `Starter pack claimed! 500 SPARK + ${partIds.length} parts.`,
     });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown error' }, { status: 500 });
+    return safeError(err, 'Starter claim failed');
   }
 }
