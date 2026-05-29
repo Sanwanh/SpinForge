@@ -18,8 +18,8 @@ export function Navbar() {
 
   const navLabel = (id: string): string => {
     const labels: Record<string, string> = isZh
-      ? { index: '首頁', register: '註冊', passport: '護照', battle: '對戰', cards: '收藏', gacha: '卡包', faq: '更多' }
-      : { index: 'Home', register: 'Register', passport: 'Passport', battle: 'Battle', cards: 'Collection', gacha: 'Packs', faq: 'More' };
+      ? { index: '首頁', register: '註冊', passport: '護照', battle: '對戰', friends: '好友', cards: '收藏', workshop: '組裝', gacha: '卡包', faq: '更多' }
+      : { index: 'Home', register: 'Register', passport: 'Passport', battle: 'Battle', friends: 'Friends', cards: 'Collection', workshop: 'Workshop', gacha: 'Packs', faq: 'More' };
     return labels[id] ?? id;
   };
 
@@ -61,6 +61,7 @@ export function Navbar() {
           { id: 'index',    icon: '⌂', href: '/' },
           { id: 'register', icon: '鑄', href: '/register' },
           { id: 'battle',   icon: '⚔', href: '/battle' },
+          { id: 'friends',  icon: '友', href: '/friends' },
           { id: 'passport', icon: '證', href: '/passport' },
           { id: 'cards',    icon: '卡', href: '/collection' },
         ].map((p) => (

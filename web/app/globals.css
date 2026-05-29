@@ -156,6 +156,7 @@ body {
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   padding: 14px 24px;
   border-radius: 8px;
@@ -480,20 +481,29 @@ body {
 }
 
 @media (max-width: 900px) {
-  .hero-grid { grid-template-columns: 1fr !important; }
-  .passport-grid { grid-template-columns: 1fr !important; }
-  .mode-grid { grid-template-columns: 1fr !important; }
-  .alloc-grid { grid-template-columns: 1fr !important; }
+  .hero-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .passport-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .mode-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .alloc-grid { grid-template-columns: minmax(0, 1fr) !important; }
   .market-grid { grid-template-columns: 1fr 1fr !important; }
+  .hero-stats { grid-template-columns: 1fr 1fr !important; gap: 16px !important; }
+  .hero-visual { display: none !important; }
 }
 
 @media (max-width: 850px) {
   .faq-grid { grid-template-columns: 1fr !important; }
 }
 
+@media (max-width: 960px) {
+  .feature-row { grid-template-columns: 1fr 1fr !important; }
+}
+
 @media (max-width: 800px) {
-  .feature-row { grid-template-columns: 1fr !important; }
   .utility-grid { grid-template-columns: 1fr 1fr !important; }
+}
+
+@media (max-width: 540px) {
+  .feature-row { grid-template-columns: 1fr !important; }
 }
 
 @media (max-width: 600px) {
@@ -507,4 +517,24 @@ body {
 
 @media (max-width: 540px) {
   .team-grid { grid-template-columns: 1fr !important; }
+}
+
+/* Theme the dapp-kit Connect button to match Mythic-Industrial */
+.sf-connect-wrap button {
+  width: 100% !important;
+  background: transparent !important;
+  border: 1px solid rgba(212, 175, 55, 0.4) !important;
+  color: var(--text) !important;
+  border-radius: 8px !important;
+  padding: 11px 0 !important;
+  font-family: var(--f-ui) !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  letter-spacing: 0.04em !important;
+  box-shadow: none !important;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.sf-connect-wrap button:hover {
+  border-color: var(--gold) !important;
+  background: rgba(212, 175, 55, 0.06) !important;
 }

@@ -2,12 +2,16 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useCurrentAccount, useSuiClient } from '@mysten/dapp-kit';
-import { RARITY_LABELS, SPIRIT_BEASTS, ELEMENT_COLORS, PACKAGE_ID, type Rarity, type Element } from '@/lib/constants';
+import { useCurrentAccount, useSuiClient, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
+import { Transaction } from '@mysten/sui/transactions';
+import { RARITY_LABELS, SPIRIT_BEASTS, ELEMENT_COLORS, TREASURY_ADDRESS, PACK_COST_MIST, type Rarity, type Element } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
-import { useSparkBalance } from '@/hooks/useSparkBalance';
+import { useSparkBalance, useSparkCoins } from '@/hooks/useSparkBalance';
 import { useInventory } from '@/hooks/useInventory';
 import { PageHeader, Section, Corners } from '@/components/design/atoms';
+import { useGuest } from '@/lib/guest';
+import { GuestEntry } from '@/components/shared/Guest';
+import { useAuthSig } from '@/lib/use-auth-sig';
 
 const PACK_COST = 100;
 
@@ -29,6 +33,7 @@ function SparkInfoCard({
   const enoughForOne = affordable >= 1;
   const need = enoughForOne ? 0 : PACK_COST - bal;
 
+  const getAuthSig = useAuthSig();
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -37,10 +42,11 @@ function SparkInfoCard({
     setClaiming(true);
     setClaimMsg(null);
     try {
+      const auth = await getAuthSig();
       const res = await fetch('/api/faucet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address }),
+        body: JSON.stringify(auth),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -54,7 +60,7 @@ function SparkInfoCard({
     } finally {
       setClaiming(false);
     }
-  }, [address, claiming, t, onClaimed]);
+  }, [getAuthSig, claiming, t, onClaimed]);
 
   return (
     <div
@@ -361,10 +367,13 @@ type Phase = 'idle' | 'opening' | 'burst' | 'revealing' | 'done';
 
 export default function PacksPage() {
   const account = useCurrentAccount();
+  const { isGuest } = useGuest();
   const client = useSuiClient();
   const t = useT();
   const { formatted: sparkBalance, refetch: refetchSpark } = useSparkBalance();
+  const { primaryCoinId, refetch: refetchCoins } = useSparkCoins();
   const { refetch: refetchInventory } = useInventory();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const [phase, setPhase] = useState<Phase>('idle');
   const [cards, setCards] = useState<RevealedCard[]>([]);
   const [revealIndex, setRevealIndex] = useState(-1);
@@ -412,22 +421,44 @@ export default function PacksPage() {
   }, [client]);
 
   const handleOpenPack = useCallback(async () => {
-    if (!account?.address) return;
+    const isZh = t.nav.home === '首頁';
+    if (!account?.address) {
+      setError(isZh ? '請先連接錢包才能開卡包。' : 'Connect a wallet to open packs.');
+      return;
+    }
 
-    setPhase('opening');
     setError(null);
     setCards([]);
     setRevealIndex(-1);
 
-    await new Promise((r) => setTimeout(r, 1500));
+    // 1. Real charge — the wallet signs a 100 SPARK transfer to the treasury.
+    if (!primaryCoinId) {
+      setError(isZh ? '你還沒有 SPARK,先去領取。' : 'No SPARK yet — claim some first.');
+      return;
+    }
+    let paymentDigest = '';
+    try {
+      const payTx = new Transaction();
+      const [pay] = payTx.splitCoins(payTx.object(primaryCoinId), [PACK_COST_MIST]);
+      payTx.transferObjects([pay], TREASURY_ADDRESS);
+      const signed = await signAndExecute({ transaction: payTx });
+      paymentDigest = signed.digest;
+    } catch {
+      setError(isZh ? '付款已取消。' : 'Payment cancelled.');
+      return;
+    }
+
+    // 2. Opening animation while the server mints the parts.
+    setPhase('opening');
+    await new Promise((r) => setTimeout(r, 1200));
     setPhase('burst');
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 700));
 
     try {
       const res = await fetch('/api/open-pack', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: account.address }),
+        body: JSON.stringify({ address: account.address, paymentDigest }),
       });
       const data = await res.json();
 
@@ -450,14 +481,15 @@ export default function PacksPage() {
       await new Promise((r) => setTimeout(r, 400));
       setPhase('done');
       refetchSpark();
+      refetchCoins();
       refetchInventory();
     } catch {
       setError('Network error');
       setPhase('idle');
     }
-  }, [account, fetchPartDetails, refetchSpark, refetchInventory]);
+  }, [account, t, primaryCoinId, signAndExecute, fetchPartDetails, refetchSpark, refetchCoins, refetchInventory]);
 
-  if (!account) {
+  if (!account && !isGuest) {
     return (
       <>
         <PageHeader
@@ -482,9 +514,10 @@ export default function PacksPage() {
               margin: '0 auto',
             }}
           >
-            <p className="muted" style={{ fontSize: 16, lineHeight: 1.6, margin: 0 }}>
+            <p className="muted" style={{ fontSize: 16, lineHeight: 1.6, marginTop: 0, marginBottom: 24 }}>
               {t.packs.connectPrompt}
             </p>
+            <GuestEntry />
           </div>
         </Section>
       </>
@@ -539,16 +572,30 @@ export default function PacksPage() {
 
         {/* SPARK balance + education panel — only when not actively in a reveal */}
         {(phase === 'idle' || phase === 'opening' || phase === 'burst') && (
-          <SparkInfoCard
-            sparkBalance={sparkBalance}
-            address={account.address}
-            isZh={isZh}
-            t={t}
-            onClaimed={() => {
-              refetchSpark();
-              refetchInventory();
-            }}
-          />
+          account ? (
+            <SparkInfoCard
+              sparkBalance={sparkBalance}
+              address={account.address}
+              isZh={isZh}
+              t={t}
+              onClaimed={() => {
+                refetchSpark();
+                refetchInventory();
+              }}
+            />
+          ) : (
+            <div className="panel" style={{ padding: 28, marginBottom: 32, textAlign: 'center' }}>
+              <Corners color="var(--gold)" />
+              <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 10 }}>
+                {isZh ? '訪客預覽' : 'Guest preview'}
+              </div>
+              <p className="muted" style={{ fontSize: 14, lineHeight: 1.6, margin: '0 auto', maxWidth: 460 }}>
+                {isZh
+                  ? '每包 100 SPARK,開出 5 個隨機零件(刀刃 / 棘輪 / 軸尖)。連接錢包後可領取 SPARK 並開包。'
+                  : 'Each pack is 100 SPARK and yields 5 random parts (Blade / Ratchet / Bit). Connect a wallet to claim SPARK and open packs.'}
+              </p>
+            </div>
+          )
         )}
 
         {error && (

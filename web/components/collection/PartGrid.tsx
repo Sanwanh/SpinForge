@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import clsx from 'clsx';
 import { PartCard, type PartCardData } from './PartCard';
 import { ELEMENTS, BEY_TYPES, RARITIES } from '@/lib/constants';
@@ -14,12 +14,23 @@ interface PartGridProps {
 
 type PartTypeFilter = 'all' | 'blade' | 'ratchet' | 'bit';
 
+const PAGE_SIZE = 12;
+
 export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
   const t = useT();
+  const isZh = t.nav.home === '首頁';
   const [typeFilter, setTypeFilter] = useState<PartTypeFilter>('all');
   const [elementFilter, setElementFilter] = useState<string>('all');
   const [rarityFilter, setRarityFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const typeLabels: Record<PartTypeFilter, string> = {
+    all: isZh ? '全部' : 'All',
+    blade: isZh ? '刀刃' : 'Blades',
+    ratchet: isZh ? '棘輪' : 'Ratchets',
+    bit: isZh ? '軸尖' : 'Bits',
+  };
 
   const filtered = useMemo(() => {
     return parts.filter((p) => {
@@ -34,17 +45,22 @@ export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
     });
   }, [parts, typeFilter, elementFilter, rarityFilter, search]);
 
+  // Collapse the wall: only render a page at a time. Reset when filters change.
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [typeFilter, elementFilter, rarityFilter, search]);
+  const visible = filtered.slice(0, visibleCount);
+  const remaining = filtered.length - visible.length;
+
   return (
     <div className="space-y-4">
       {/* Filters */}
       <div className="flex flex-wrap gap-2">
         <input
           type="text"
-          placeholder="Search parts..."
+          placeholder={isZh ? '搜尋零件…' : 'Search parts...'}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="rounded-lg border border-gray-700 bg-surface-overlay px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:border-brand-blue focus:outline-none"
-          aria-label="Search parts"
+          aria-label={isZh ? '搜尋零件' : 'Search parts'}
         />
 
         {/* Type filter */}
@@ -58,7 +74,7 @@ export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
                 typeFilter === t ? 'bg-brand-blue text-white' : 'bg-surface-overlay text-gray-400 hover:text-white'
               )}
             >
-              {t === 'all' ? 'All' : t.charAt(0).toUpperCase() + t.slice(1) + 's'}
+              {typeLabels[t]}
             </button>
           ))}
         </div>
@@ -92,7 +108,7 @@ export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
 
       {/* Grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {filtered.map((part) => (
+        {visible.map((part) => (
           <PartCard
             key={part.objectId}
             part={part}
@@ -102,9 +118,21 @@ export function PartGrid({ parts, onSelect, selectedId }: PartGridProps) {
         ))}
       </div>
 
+      {remaining > 0 && (
+        <div className="flex justify-center pt-2">
+          <button
+            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+            className="btn btn-ghost"
+            style={{ fontSize: 12 }}
+          >
+            {isZh ? `載入更多 · 還有 ${remaining} 個` : `Show more · ${remaining} left`}
+          </button>
+        </div>
+      )}
+
       {filtered.length === 0 && (
         <div className="py-16 text-center text-gray-500">
-          {parts.length === 0 ? t.collection.noItems : 'No parts match your filters.'}
+          {parts.length === 0 ? t.collection.noItems : (isZh ? '沒有符合篩選的零件。' : 'No parts match your filters.')}
         </div>
       )}
     </div>

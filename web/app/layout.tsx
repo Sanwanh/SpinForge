@@ -4,6 +4,7 @@ import '@mysten/dapp-kit/dist/index.css';
 import { Providers } from './providers';
 import { Navbar } from '@/components/shared/Navbar';
 import { Footer } from '@/components/shared/Footer';
+import { GuestBanner } from '@/components/shared/Guest';
 
 export const metadata: Metadata = {
   title: 'SpinForge — Ancient Steel. On-Chain Spin.',
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <div className="bg-trigram" aria-hidden />
           <Navbar />
+          <GuestBanner />
           <main className="shell">{children}</main>
           <Footer />
         </Providers>

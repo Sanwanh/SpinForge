@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import { useCurrentAccount } from '@mysten/dapp-kit';
 import { PageHeader, Section, Tag, Corners } from '@/components/design/atoms';
 import { useT } from '@/lib/i18n';
+import { useAuthSig } from '@/lib/use-auth-sig';
 
 const REAL_BLADES = [
   'Wizard Rod', 'Phoenix Wing', 'Dran Sword', 'Shark Edge',
@@ -237,6 +238,7 @@ function SectionEyebrow({
 
 export default function RegisterPage() {
   const account = useCurrentAccount();
+  const getAuthSig = useAuthSig();
   const t = useT();
   const isZh = t.nav.home === '首頁';
 
@@ -259,11 +261,12 @@ export default function RegisterPage() {
     setError('');
 
     try {
+      const auth = await getAuthSig();
       const res = await fetch('/api/register-rotor', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          address: account.address,
+          ...auth,
           bladeName: blade,
           spiritBeast: spirit,
           beyType,
@@ -283,7 +286,7 @@ export default function RegisterPage() {
       setError(err instanceof Error ? err.message : 'Failed');
       setStatus('error');
     }
-  }, [account, blade, spirit, beyType, spin, prong, height, bit, bitCat]);
+  }, [account, getAuthSig, blade, spirit, beyType, spin, prong, height, bit, bitCat]);
 
   // ─── Empty state ───
   if (!account) {

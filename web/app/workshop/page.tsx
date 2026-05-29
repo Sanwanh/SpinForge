@@ -14,6 +14,8 @@ import type { BladeStats, RatchetStats, BitStats } from '@/lib/physics-sim';
 import { assembleBey } from '@/lib/move-calls';
 import { useT } from '@/lib/i18n';
 import { PageHeader, Section, Eyebrow } from '@/components/design/atoms';
+import { useGuest } from '@/lib/guest';
+import { GuestEntry } from '@/components/shared/Guest';
 
 type SlotType = 'blade' | 'ratchet' | 'bit';
 
@@ -48,6 +50,7 @@ function toBitStats(fields: Record<string, unknown>): BitStats {
 
 export default function WorkshopPage() {
   const account = useCurrentAccount();
+  const { isGuest } = useGuest();
   const { blades, ratchets, bits, refetch } = useInventory();
   const { mutateAsync: signAndExecute, isPending } = useSignAndExecuteTransaction();
   const t = useT();
@@ -97,7 +100,7 @@ export default function WorkshopPage() {
     fields: p.fields,
   })) : [];
 
-  if (!account) {
+  if (!account && !isGuest) {
     return (
       <>
         <PageHeader
@@ -108,9 +111,10 @@ export default function WorkshopPage() {
         />
         <Section>
           <div className="panel" style={{ padding: 64, textAlign: 'center', maxWidth: 560, margin: '0 auto' }}>
-            <p className="muted" style={{ fontSize: 16, lineHeight: 1.6, margin: 0 }}>
+            <p className="muted" style={{ fontSize: 16, lineHeight: 1.6, marginTop: 0, marginBottom: 24 }}>
               {t.workshop.connectPrompt}
             </p>
+            <GuestEntry />
           </div>
         </Section>
       </>

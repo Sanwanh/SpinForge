@@ -7,6 +7,7 @@ import { useT } from '@/lib/i18n';
 import { useSparkBalance } from '@/hooks/useSparkBalance';
 import { useInventory } from '@/hooks/useInventory';
 import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useAuthSig } from '@/lib/use-auth-sig';
 import { Beyblade } from '@/components/design/Beyblade';
 import { Stat, Eyebrow, SectionHead, ElementGlyph, Tag } from '@/components/design/atoms';
 import type { ElementId } from '@/components/design/tokens';
@@ -15,6 +16,7 @@ function HeroVisual() {
   const elements: ElementId[] = ['fire', 'water', 'wood', 'metal', 'earth'];
   return (
     <div
+      className="hero-visual"
       style={{
         position: 'relative',
         display: 'grid',
@@ -175,7 +177,7 @@ function Hero({ ctas }: { ctas: React.ReactNode }) {
 
           <h1
             className="t-display glow-text"
-            style={{ fontSize: 'clamp(56px, 7.2vw, 104px)', margin: 0 }}
+            style={{ fontSize: 'clamp(34px, 8vw, 104px)', margin: 0, overflowWrap: 'break-word' }}
           >
             ANCIENT
             <br />
@@ -207,7 +209,7 @@ function Hero({ ctas }: { ctas: React.ReactNode }) {
           </div>
 
           <div
-            className="sf-grid"
+            className="sf-grid hero-stats"
             style={{
               gridTemplateColumns: 'repeat(4, 1fr)',
               gap: 24,
@@ -257,42 +259,38 @@ function Hero({ ctas }: { ctas: React.ReactNode }) {
   );
 }
 
-interface FeatureGroup {
-  label: string;
-  items: { id: string; title: string; k: string; desc: string; color: string; href: string }[];
-}
+interface FeatureItem { id: string; title: string; k: string; desc: string; color: string; href: string }
 
-const FEATURE_GROUPS: FeatureGroup[] = [
-  {
-    label: '01 · Your Top, On-Chain',
-    items: [
-      { id: 'passport', title: 'Spin Passport', k: '證', desc: 'Register your physical top as a Sui Object with permanent battle history.', color: 'var(--gold)', href: '/passport' },
-      { id: 'elements', title: 'Five Elements', k: '五', desc: 'Wu Xing combat triangle. Wood beats earth. Fire beats metal.', color: 'var(--wood)', href: '/elements' },
-      { id: 'cards',    title: 'Cards & Parts', k: '卡', desc: 'Four rarity tiers. From Common to Legendary, each carries weight.', color: 'var(--epic)', href: '/collection' },
-    ],
-  },
-  {
-    label: '02 · Play',
-    items: [
-      { id: 'gacha',  title: 'Gacha', k: '鑄', desc: 'Open booster packs. Watch five parts emerge from elemental burst.', color: 'var(--gold)', href: '/packs' },
-      { id: 'battle', title: 'Battle', k: '戰', desc: '3v3 on the real arena. Pre-launch power meter, on-chain result.', color: 'var(--blood)', href: '/tournament' },
-      { id: 'forge',  title: 'Forge', k: '鍛', desc: 'Fuse two parts. Evolve one. Legendary tier unlocks skill slots.', color: 'var(--earth)', href: '/forge' },
-    ],
-  },
-  {
-    label: '03 · Economy',
-    items: [
-      { id: 'marketplace', title: 'Market',     k: '市', desc: 'The Spirit Bazaar. Trade rare parts, skill cards, arena fragments.', color: 'var(--rare)', href: '/market' },
-      { id: 'tokenomics',  title: '$SPARK',     k: '幣', desc: 'The current that drives the spin. Earn, forge, stake, trade.', color: 'var(--gold)', href: '/tokenomics' },
-      { id: 'tournament',  title: 'Tournament', k: '賽', desc: 'Weekend cups to global Forge Cup S1. Passport required.', color: 'var(--epic)', href: '/tournament' },
-    ],
-  },
-];
+// The four systems that actually work end-to-end today. Order = the player's path.
+function coreFeatures(isZh: boolean): FeatureItem[] {
+  return [
+    {
+      id: 'passport', k: '證', color: 'var(--gold)', href: '/passport',
+      title: isZh ? '陀螺護照' : 'Spin Passport',
+      desc: isZh ? '把你手上的實體陀螺註冊成 Sui 鏈上物件,擁有永久戰績與徽章。' : 'Register your physical top as a Sui object with a permanent battle history.',
+    },
+    {
+      id: 'packs', k: '鑄', color: 'var(--epic)', href: '/packs',
+      title: isZh ? '開卡包' : 'Open Packs',
+      desc: isZh ? '花 100 SPARK 開一包,抽出 5 個隨機零件(刀刃 / 棘輪 / 軸尖)。' : 'Spend 100 SPARK to open a pack and reveal 5 random parts (Blade / Ratchet / Bit).',
+    },
+    {
+      id: 'workshop', k: '鍛', color: 'var(--earth)', href: '/workshop',
+      title: isZh ? '組裝工坊' : 'Workshop',
+      desc: isZh ? '把刀刃 + 棘輪 + 軸尖組裝成一台可出戰的陀螺。' : 'Combine a Blade + Ratchet + Bit into a battle-ready Bey.',
+    },
+    {
+      id: 'battle', k: '戰', color: 'var(--blood)', href: '/battle',
+      title: isZh ? '對戰紀錄' : 'Battle Record',
+      desc: isZh ? '登錄你的實體對戰,結果由雙方確認後永久寫上鏈。' : 'Log your physical battles — results are confirmed by both players and written on-chain.',
+    },
+  ];
+}
 
 function FeatureCard({
   item,
 }: {
-  item: FeatureGroup['items'][number];
+  item: FeatureItem;
 }) {
   return (
     <Link
@@ -412,29 +410,14 @@ function FeatureMap() {
           align="center"
         />
 
-        {FEATURE_GROUPS.map((g, gi) => (
-          <div key={gi} style={{ marginBottom: 36 }}>
-            <div
-              className="t-eyebrow"
-              style={{
-                marginBottom: 18,
-                fontSize: 11,
-                color: 'var(--text-dim)',
-                letterSpacing: '0.2em',
-              }}
-            >
-              {g.label}
-            </div>
-            <div
-              className="sf-grid feature-row"
-              style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}
-            >
-              {g.items.map((it) => (
-                <FeatureCard key={it.id} item={it} />
-              ))}
-            </div>
-          </div>
-        ))}
+        <div
+          className="sf-grid feature-row"
+          style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}
+        >
+          {coreFeatures(t.nav.home === '首頁').map((it) => (
+            <FeatureCard key={it.id} item={it} />
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -448,6 +431,7 @@ function StarterPackBanner({
   onClaimed: () => void;
 }) {
   const t = useT();
+  const getAuthSig = useAuthSig();
   const [claiming, setClaiming] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -456,10 +440,11 @@ function StarterPackBanner({
     setClaiming(true);
     setError(null);
     try {
+      const auth = await getAuthSig();
       const res = await fetch('/api/faucet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address }),
+        body: JSON.stringify(auth),
       });
       const data = await res.json();
       if (!res.ok) setError(data.error);
@@ -472,7 +457,7 @@ function StarterPackBanner({
     } finally {
       setClaiming(false);
     }
-  }, [address, onClaimed]);
+  }, [getAuthSig, onClaimed]);
 
   if (result) {
     return (

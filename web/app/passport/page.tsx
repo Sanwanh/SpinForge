@@ -17,6 +17,10 @@ import {
 import { BeyCard, type BeyCardData } from '@/components/design/BeyCard';
 import { PACKAGE_ID, ORIGINAL_PACKAGE_ID, PROFILE_PACKAGE_ID } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
+import { funName } from '@/lib/fun-name';
+import { useGuest } from '@/lib/guest';
+import { GuestEntry } from '@/components/shared/Guest';
+import { useAuthSig } from '@/lib/use-auth-sig';
 
 // Common query options — force every visit to /passport to refetch so a
 // fresh mint from /register shows up immediately on navigation.
@@ -369,6 +373,7 @@ function MyRotors({
 
 function OnboardingBanner({ address, onDone }: { address: string; onDone: () => void }) {
   const t = useT();
+  const getAuthSig = useAuthSig();
   const [step, setStep] = useState<'idle' | 'creating' | 'claiming' | 'done'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -376,10 +381,12 @@ function OnboardingBanner({ address, onDone }: { address: string; onDone: () => 
     setStep('creating');
     setError(null);
     try {
+      // Sign once; reuse for both admin-signed calls (both verify this address).
+      const auth = await getAuthSig();
       const pRes = await fetch('/api/create-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address, displayName: `Player_${address.slice(2, 8)}` }),
+        body: JSON.stringify({ ...auth, displayName: funName(address) }),
       });
       const pData = await pRes.json();
       if (!pRes.ok) throw new Error(pData.error);
@@ -388,7 +395,7 @@ function OnboardingBanner({ address, onDone }: { address: string; onDone: () => 
       const cRes = await fetch('/api/claim-starter', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address }),
+        body: JSON.stringify(auth),
       });
       const cData = await cRes.json();
       if (!cRes.ok) throw new Error(cData.error);
@@ -399,7 +406,7 @@ function OnboardingBanner({ address, onDone }: { address: string; onDone: () => 
       setError(err instanceof Error ? err.message : 'Failed');
       setStep('idle');
     }
-  }, [address, onDone]);
+  }, [getAuthSig, address, onDone]);
 
   return (
     <div className="panel" style={{ padding: 28, textAlign: 'center', maxWidth: 500, margin: '0 auto' }}>
@@ -513,84 +520,91 @@ function ModeCard({ tag, kanji, title, sub, body, accent, recommended }: ModeCar
       style={{
         padding: 28,
         position: 'relative',
+        overflow: 'hidden',
         border: recommended ? `1px solid ${accent}` : '1px solid var(--border-soft)',
         boxShadow: recommended
           ? `0 0 0 1px ${accent}22, 0 12px 40px ${accent}22`
           : undefined,
       }}
     >
-      {recommended && (
-        <div
-          style={{
-            position: 'absolute',
-            top: -10,
-            right: 20,
-            padding: '4px 10px',
-            borderRadius: 4,
-            background: accent,
-            color: 'var(--abyss)',
-            fontFamily: 'var(--f-mono)',
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: '0.15em',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {t.passport.recommended}
-        </div>
-      )}
+      {/* Faint kanji watermark — clipped inside the card, behind the content */}
       <div
+        aria-hidden
         style={{
           position: 'absolute',
-          top: 18,
-          right: 18,
+          bottom: -18,
+          right: -6,
           fontFamily: 'var(--f-han)',
           fontWeight: 900,
-          fontSize: 80,
+          fontSize: 110,
           color: accent,
-          opacity: 0.08,
+          opacity: 0.06,
           lineHeight: 1,
           userSelect: 'none',
+          pointerEvents: 'none',
+          zIndex: 0,
         }}
       >
         {kanji}
       </div>
-      <div className="t-eyebrow" style={{ color: accent }}>
-        {tag}
-      </div>
-      <h3 className="t-h3" style={{ marginTop: 12, marginBottom: 6 }}>
-        {title}
-      </h3>
-      <div className="muted" style={{ fontSize: 13, marginBottom: 18 }}>
-        {sub}
-      </div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-        {body.map((line, i) => (
-          <li
-            key={i}
+
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        {recommended && (
+          <div
             style={{
-              fontSize: 14,
-              color: 'var(--text)',
-              padding: '8px 0',
-              borderTop: i === 0 ? undefined : '1px dashed var(--border-soft)',
-              display: 'flex',
-              gap: 10,
-              alignItems: 'baseline',
+              display: 'inline-block',
+              padding: '4px 10px',
+              borderRadius: 4,
+              background: accent,
+              color: 'var(--abyss)',
+              fontFamily: 'var(--f-mono)',
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.15em',
+              marginBottom: 14,
             }}
           >
-            <span
+            {t.passport.recommended}
+          </div>
+        )}
+        <div className="t-eyebrow" style={{ color: accent }}>
+          {tag}
+        </div>
+        <h3 className="t-h3" style={{ marginTop: 12, marginBottom: 6 }}>
+          {title}
+        </h3>
+        <div className="muted" style={{ fontSize: 13, marginBottom: 18 }}>
+          {sub}
+        </div>
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {body.map((line, i) => (
+            <li
+              key={i}
               style={{
-                color: accent,
-                fontFamily: 'var(--f-mono)',
-                fontSize: 11,
+                fontSize: 14,
+                color: 'var(--text)',
+                padding: '8px 0',
+                borderTop: i === 0 ? undefined : '1px dashed var(--border-soft)',
+                display: 'flex',
+                gap: 10,
+                alignItems: 'baseline',
               }}
             >
-              ›
-            </span>
-            {line}
-          </li>
-        ))}
-      </ul>
+              <span
+                style={{
+                  color: accent,
+                  fontFamily: 'var(--f-mono)',
+                  fontSize: 11,
+                  flexShrink: 0,
+                }}
+              >
+                ›
+              </span>
+              {line}
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -598,12 +612,13 @@ function ModeCard({ tag, kanji, title, sub, body, accent, recommended }: ModeCar
 export default function PassportPage() {
   const account = useCurrentAccount();
   const [refreshKey, setRefreshKey] = useState(0);
+  const { isGuest } = useGuest();
   const { profile, beys, loadingParts, refetch } = usePlayerData(account?.address);
   const t = useT();
 
   const isZh = t.nav.home === '首頁';
 
-  if (!account) {
+  if (!account && !isGuest) {
     return (
       <>
         <PageHeader
@@ -618,11 +633,16 @@ export default function PassportPage() {
           sub={t.collection.connectPrompt}
           kanjiBg="證"
         />
+        <Section>
+          <div className="panel" style={{ padding: 48, textAlign: 'center', maxWidth: 560, margin: '0 auto' }}>
+            <GuestEntry />
+          </div>
+        </Section>
       </>
     );
   }
 
-  if (!loadingParts && !profile) {
+  if (account && !loadingParts && !profile) {
     return (
       <>
         <PageHeader
@@ -675,7 +695,17 @@ export default function PassportPage() {
           }}
         >
           <div style={{ display: 'grid', placeItems: 'center' }}>
-            <PassportCard address={account.address} key={refreshKey} />
+            {account ? (
+              <PassportCard address={account.address} key={refreshKey} />
+            ) : (
+              <div className="panel" style={{ padding: 40, textAlign: 'center', maxWidth: 320 }}>
+                <Corners color="var(--gold)" />
+                <div style={{ fontSize: 40, marginBottom: 12 }}>證</div>
+                <p className="muted" style={{ fontSize: 14, lineHeight: 1.6, margin: 0 }}>
+                  {isZh ? '連接錢包後,這裡會顯示你的鏈上陀螺護照(戰績、ELO、終結技)。' : 'Connect a wallet to see your on-chain passport here (record, ELO, finishes).'}
+                </p>
+              </div>
+            )}
           </div>
           <div>
             <Eyebrow color="var(--gold)">{t.passport.livesEyebrow}</Eyebrow>
@@ -737,7 +767,7 @@ export default function PassportPage() {
           </div>
         </div>
 
-        <MyRotors beys={beys} />
+        {account && <MyRotors beys={beys} />}
 
         <RegistrationFlow />
 
