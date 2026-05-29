@@ -28,3 +28,23 @@ export function useAuthSig(): () => Promise<AuthSig> {
     return { address: account.address, authMessage: message, authSignature: signature };
   }, [account, signPersonalMessage]);
 }
+
+// Cache the signature per address and reuse it within the freshness window, so
+// frequent off-chain social calls (friends, chat, lobby) don't pop a wallet
+// prompt every time. Re-signs ~1 min before the 5-min server window expires.
+const sigCache = new Map<string, { sig: AuthSig; expiresAt: number }>();
+const REUSE_MS = 4 * 60 * 1000;
+
+export function useCachedAuthSig(): () => Promise<AuthSig> {
+  const account = useCurrentAccount();
+  const getAuthSig = useAuthSig();
+  return useCallback(async () => {
+    const addr = account?.address;
+    if (!addr) throw new Error('Connect a wallet first.');
+    const cached = sigCache.get(addr);
+    if (cached && cached.expiresAt > Date.now()) return cached.sig;
+    const sig = await getAuthSig();
+    sigCache.set(addr, { sig, expiresAt: Date.now() + REUSE_MS });
+    return sig;
+  }, [account, getAuthSig]);
+}

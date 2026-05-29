@@ -12,7 +12,7 @@ import {
 } from '@/components/design/BeyCard';
 import { useT } from '@/lib/i18n';
 import { QRCodeSVG } from 'qrcode.react';
-import { useAuthSig } from '@/lib/use-auth-sig';
+import { useAuthSig, useCachedAuthSig } from '@/lib/use-auth-sig';
 
 type Phase = 'create' | 'waiting' | 'select' | 'battle' | 'submit' | 'confirmed' | 'done';
 
@@ -49,6 +49,7 @@ const FINISH_LABELS: Record<number, string> = {
 export default function BattlePage() {
   const account = useCurrentAccount();
   const getAuthSig = useAuthSig();
+  const getCachedAuth = useCachedAuthSig();
   const { beys } = useInventory();
   const t = useT();
   const isZh = t.nav.home === '首頁';
@@ -78,13 +79,19 @@ export default function BattlePage() {
   const [linkCopied, setLinkCopied] = useState(false);
 
   const api = useCallback(async (body: Record<string, unknown>) => {
+    // Mutating room actions must carry a wallet signature; 'get' is a read.
+    let payload = body;
+    if (body.action && body.action !== 'get') {
+      const auth = await getCachedAuth();
+      payload = { ...body, ...auth };
+    }
     const res = await fetch('/api/battle-room', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
     return res.json();
-  }, []);
+  }, [getCachedAuth]);
 
   const handleCreate = useCallback(async () => {
     if (!account) return;

@@ -91,7 +91,14 @@ export async function kvRateLimit(
 ): Promise<{ ok: boolean; remaining: number }> {
   if (redis) {
     const n = await redis.incr(key);
-    if (n === 1) await redis.expire(key, windowSeconds);
+    if (n === 1) {
+      await redis.expire(key, windowSeconds);
+    } else {
+      // Guard against a dropped EXPIRE on the creating call: if the key somehow
+      // has no TTL (-1) it would count forever and lock the IP out — re-arm it.
+      const ttl = await redis.ttl(key);
+      if (ttl < 0) await redis.expire(key, windowSeconds);
+    }
     return { ok: n <= limit, remaining: Math.max(0, limit - n) };
   }
   const e = memAlive(key);

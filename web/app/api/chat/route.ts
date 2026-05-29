@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kvRPush, kvLRange, kvSMembers } from '@/lib/kv';
+import { verifyAuth } from '@/lib/auth-verify';
+import { isSameOrigin, rateLimited } from '@/lib/api-guard';
 
 const ADDR_RE = /^0x[0-9a-fA-F]{2,64}$/;
 const CHAT_TTL = 60 * 60 * 24 * 3; // threads kept 3 days
@@ -31,11 +33,22 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+  }
+  const limited = await rateLimited(request, 'chat', 120, 3600);
+  if (limited) return limited;
+
   const body = await request.json();
   const { from, to, text } = body;
 
   if (!isAddr(from) || !isAddr(to)) {
     return NextResponse.json({ error: 'Invalid address' }, { status: 400 });
+  }
+  // Sender must prove control of `from` — no posting as someone else.
+  const auth = await verifyAuth(from, body.authMessage, body.authSignature);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: 401 });
   }
   if (typeof text !== 'string' || text.trim().length === 0) {
     return NextResponse.json({ error: 'Empty message' }, { status: 400 });

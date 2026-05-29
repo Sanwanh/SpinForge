@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import { kvGet, kvSet } from '@/lib/kv';
+import { verifyAuth } from '@/lib/auth-verify';
+import { isSameOrigin, rateLimited } from '@/lib/api-guard';
 
 interface BattleRoom {
   id: string;
@@ -23,7 +26,8 @@ const ROOM_TTL = 60 * 60; // rooms live 1 hour
 const roomKey = (id: string) => `room:${id}`;
 
 function generateId(): string {
-  return Math.random().toString(36).substring(2, 10).toUpperCase();
+  // Cryptographically random room code (not Math.random, which is guessable).
+  return randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 }
 
 async function getRoom(id: string): Promise<BattleRoom | null> {
@@ -42,8 +46,24 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+  }
+  const limited = await rateLimited(request, 'battle-room', 120, 3600);
+  if (limited) return limited;
+
   const body = await request.json();
   const { action } = body;
+
+  // 'get' is a read; everything else mutates the room as a specific actor who
+  // must prove control of their address. (audit: battle-room tamper)
+  if (action !== 'get') {
+    const actor = body.creator ?? body.opponent ?? body.player ?? body.submitter ?? body.confirmer;
+    const auth = await verifyAuth(actor, body.authMessage, body.authSignature);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: 401 });
+    }
+  }
 
   switch (action) {
     case 'create': {
@@ -99,9 +119,15 @@ export async function POST(request: NextRequest) {
     }
 
     case 'submit-result': {
-      const { roomId, winner, finishType, scoreA, scoreB } = body;
+      const { roomId, submitter, winner, finishType, scoreA, scoreB } = body;
       const room = await getRoom(roomId);
       if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+      if (submitter !== room.creator && submitter !== room.opponent) {
+        return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+      }
+      if (winner !== room.creator && winner !== room.opponent) {
+        return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
+      }
       room.result = { winner, finishType, scoreA, scoreB };
       room.status = 'submitted';
       await saveRoom(room);
@@ -109,9 +135,12 @@ export async function POST(request: NextRequest) {
     }
 
     case 'confirm-result': {
-      const { roomId } = body;
+      const { roomId, confirmer } = body;
       const room = await getRoom(roomId);
       if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+      if (confirmer !== room.creator && confirmer !== room.opponent) {
+        return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+      }
       if (!room.result) return NextResponse.json({ error: 'No result to confirm' }, { status: 400 });
       room.status = 'confirmed';
       await saveRoom(room);

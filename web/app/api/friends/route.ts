@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { kvGet, kvSet, kvDel, kvSAdd, kvSRem, kvSMembers } from '@/lib/kv';
+import { verifyAuth } from '@/lib/auth-verify';
+import { isSameOrigin, rateLimited } from '@/lib/api-guard';
 
 const ADDR_RE = /^0x[0-9a-fA-F]{2,64}$/;
 const INVITE_TTL = 60 * 10; // battle invites live 10 minutes
@@ -32,8 +34,23 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!isSameOrigin(request)) {
+    return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
+  }
+  const limited = await rateLimited(request, 'friends', 60, 3600);
+  if (limited) return limited;
+
   const body = await request.json();
   const { action } = body;
+
+  // The acting address is `me` (accept/decline/remove/clear-invite) or `from`
+  // (request/invite-battle). Require a wallet signature proving control of it so
+  // nobody can act as another address. (audit: chat/friends spoofing)
+  const actor = body.me ?? body.from;
+  const auth = await verifyAuth(actor, body.authMessage, body.authSignature);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: 401 });
+  }
 
   switch (action) {
     case 'request': {

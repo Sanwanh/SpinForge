@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useT } from '@/lib/i18n';
 import { PageHeader, Section, Corners } from '@/components/design/atoms';
 import { QRCodeSVG } from 'qrcode.react';
+import { useCachedAuthSig } from '@/lib/use-auth-sig';
 
 interface ChatMessage {
   from: string;
@@ -26,6 +27,7 @@ export default function FriendsPage() {
   const t = useT();
   const isZh = t.nav.home === '首頁';
   const router = useRouter();
+  const getAuth = useCachedAuthSig();
 
   const [friends, setFriends] = useState<string[]>([]);
   const [requests, setRequests] = useState<string[]>([]);
@@ -92,10 +94,11 @@ export default function FriendsPage() {
     window.history.replaceState({}, '', '/friends');
     if (!/^0x[0-9a-fA-F]{2,64}$/.test(add) || add === address) return;
     (async () => {
+      const auth = await getAuth();
       const res = await fetch('/api/friends', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'request', from: address, to: add }),
+        body: JSON.stringify({ action: 'request', from: address, to: add, ...auth }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -108,7 +111,7 @@ export default function FriendsPage() {
       }
       refreshFriends();
     })();
-  }, [address, isZh, refreshFriends]);
+  }, [address, isZh, refreshFriends, getAuth]);
 
   const sendRequest = useCallback(async () => {
     if (!address) return;
@@ -117,10 +120,11 @@ export default function FriendsPage() {
       setNotice({ ok: false, text: isZh ? '請輸入有效的錢包地址(0x…)' : 'Enter a valid wallet address (0x…)' });
       return;
     }
+    const auth = await getAuth();
     const res = await fetch('/api/friends', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'request', from: address, to }),
+      body: JSON.stringify({ action: 'request', from: address, to, ...auth }),
     });
     const data = await res.json();
     if (res.ok) {
@@ -129,56 +133,60 @@ export default function FriendsPage() {
     } else {
       setNotice({ ok: false, text: data.error });
     }
-  }, [address, addInput, isZh]);
+  }, [address, addInput, isZh, getAuth]);
 
   const respond = useCallback(async (action: 'accept' | 'decline', from: string) => {
     if (!address) return;
+    const auth = await getAuth();
     await fetch('/api/friends', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, me: address, from }),
+      body: JSON.stringify({ action, me: address, from, ...auth }),
     });
     refreshFriends();
-  }, [address, refreshFriends]);
+  }, [address, getAuth, refreshFriends]);
 
   const removeFriend = useCallback(async (friend: string) => {
     if (!address) return;
+    const auth = await getAuth();
     await fetch('/api/friends', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'remove', me: address, friend }),
+      body: JSON.stringify({ action: 'remove', me: address, friend, ...auth }),
     });
     if (chatWith === friend) setChatWith(null);
     refreshFriends();
-  }, [address, chatWith, refreshFriends]);
+  }, [address, getAuth, chatWith, refreshFriends]);
 
   const startBattle = useCallback(async (friend: string) => {
     if (!address) return;
+    const auth = await getAuth();
     const res = await fetch('/api/battle-room', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'create', creator: address }),
+      body: JSON.stringify({ action: 'create', creator: address, ...auth }),
     });
     const data = await res.json();
     if (data.roomId) {
       await fetch('/api/friends', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'invite-battle', from: address, to: friend, roomId: data.roomId }),
+        body: JSON.stringify({ action: 'invite-battle', from: address, to: friend, roomId: data.roomId, ...auth }),
       });
       router.push(`/battle?room=${data.roomId}`);
     }
-  }, [address, router]);
+  }, [address, getAuth, router]);
 
   const joinInvite = useCallback(async () => {
     if (!address || !invite) return;
+    const auth = await getAuth();
     await fetch('/api/friends', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear-invite', me: address }),
+      body: JSON.stringify({ action: 'clear-invite', me: address, ...auth }),
     });
     router.push(`/battle?join=${invite.roomId}`);
-  }, [address, invite, router]);
+  }, [address, getAuth, invite, router]);
 
   const sendMessage = useCallback(async () => {
     if (!address || !chatWith) return;
@@ -187,13 +195,14 @@ export default function FriendsPage() {
     setChatInput('');
     // Optimistic append
     setMessages((m) => [...m, { from: address, text, ts: Date.now() }]);
+    const auth = await getAuth();
     await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: address, to: chatWith, text }),
+      body: JSON.stringify({ from: address, to: chatWith, text, ...auth }),
     });
     refreshChat();
-  }, [address, chatWith, chatInput, refreshChat]);
+  }, [address, getAuth, chatWith, chatInput, refreshChat]);
 
   const copyAddress = useCallback(() => {
     if (!address) return;
