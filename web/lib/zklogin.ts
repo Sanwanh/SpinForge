@@ -28,7 +28,10 @@ const SESSION_KEY = 'spinforge_zklogin_session';
 // not shared across tabs. Also clear any legacy localStorage copy.
 export function getStoredSession(): ZkLoginSession | null {
   if (typeof window === 'undefined') return null;
-  const raw = sessionStorage.getItem(SESSION_KEY) ?? localStorage.getItem(SESSION_KEY);
+  // Only trust sessionStorage. Legacy localStorage sessions may hold a pre-fix
+  // fabricated address (bypassing H-11), so we purge rather than reload them.
+  try { localStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+  const raw = sessionStorage.getItem(SESSION_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as ZkLoginSession;

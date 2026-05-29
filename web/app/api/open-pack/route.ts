@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
 import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
-import { kvGet, kvSet } from '@/lib/kv';
+import { kvSetNX, kvDel } from '@/lib/kv';
 import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
 
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
@@ -48,7 +48,11 @@ async function verifyPayment(
   treasury: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const usedKey = `used_payment:${digest}`;
-  if (await kvGet<boolean>(usedKey)) {
+  // Atomically reserve the digest BEFORE the (0–3.2s) RPC window, so two
+  // concurrent requests with the same digest can't both pass. Release the
+  // reservation on any verification failure so a legit payment that hit a
+  // transient RPC error isn't permanently locked out. (TOCTOU fix)
+  if (!(await kvSetNX(usedKey, 60 * 60 * 24 * 7))) {
     return { ok: false, error: 'This payment was already used.' };
   }
 
@@ -65,15 +69,20 @@ async function verifyPayment(
     }
     await new Promise((r) => setTimeout(r, 800));
   }
-  if (!tx) return { ok: false, error: 'Payment transaction not found.' };
+  if (!tx) {
+    await kvDel(usedKey);
+    return { ok: false, error: 'Payment transaction not found.' };
+  }
 
   const effects = tx.effects as { status?: { status?: string } } | undefined;
   if (effects?.status?.status !== 'success') {
+    await kvDel(usedKey);
     return { ok: false, error: 'Payment transaction did not succeed.' };
   }
 
   const sender = (tx.transaction as { data?: { sender?: string } })?.data?.sender;
   if (sender !== payer) {
+    await kvDel(usedKey);
     return { ok: false, error: 'Payment sender does not match.' };
   }
 
@@ -85,11 +94,11 @@ async function verifyPayment(
       BigInt(c.amount ?? '0') >= PACK_COST,
   );
   if (!paid) {
+    await kvDel(usedKey);
     return { ok: false, error: 'Payment did not reach the treasury.' };
   }
 
-  // Mark used (7 days) so the same payment can't open multiple packs.
-  await kvSet(usedKey, true, 60 * 60 * 24 * 7);
+  // Reservation already holds the digest for 7 days — no second write needed.
   return { ok: true };
 }
 
