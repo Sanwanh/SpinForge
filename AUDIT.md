@@ -22,7 +22,8 @@
 | **H-10** 偽造戰績 | ✅ 已修+上線 | submit-result 需參與者驗簽 + winner/scores 驗證 |
 | **H-11/M-9** zkLogin 假驗證 | ✅ 程式碼已修+上線 | 移除偽造地址;伺服器 Google JWKS 驗 JWT + 真實地址推導;secrets 改 sessionStorage。**啟用真正登入只差你提供 `NEXT_PUBLIC_GOOGLE_CLIENT_ID` + `ZKLOGIN_SALT_SECRET`** |
 | **M-3** advance_round | ✅ 已修+上鏈 | winners 子集驗證 + 負向測試 |
-| **M-4** 無 CORS/速率限制 | 🟡 部分 | 同源檢查已上線;持久速率限制需 Redis(task #21) |
+| **M-4** 無 CORS/速率限制 | ✅ 已修+上線 | 同源檢查 + per-IP 速率限制(全 admin + 社交路由);跨實例需 Redis 才完全可靠 |
+| **H-12/M-5** friends/chat/battle-room 冒充 | ✅ 已修+上線 | 全部要求 actor 錢包簽名(cached sig 免每次彈窗)+ 參與者檢查;room id 改 crypto;curl 實測 401/403,讀取仍可用 |
 | **L-1/L-3** deck 越界 / 溢付 | ✅ 已修+上鏈 | + 負向測試 |
 | **L-4/L-5** 錯誤洩漏 / 無界輸入 | ✅ 已修+上線 | 統一淨化 + 邊界驗證 |
 | **C-1/M-8** 單一熱鑰 | ⏳ 待辦 | 需金鑰輪替 / KMS / multisig(運營決策) |
@@ -31,11 +32,20 @@
 
 合約測試:**176 passed**。其餘待辦見 task #21 與下方路線圖。
 
+**合併前審查(多代理 + 對抗式驗證 + 線上 A/B,A/B 10/10 通過)額外修復:**
+- **[HIGH] open-pack 付款防重放 TOCTOU**:`verifyPayment` 原為非原子 `kvGet`→`kvSet`(中間隔 0–3.2s RPC),並發同 digest 可雙鑄。改用原子 `kvSetNX` 佔位 + 失敗 `kvDel` 釋放;並發實測一個佔位、另一個被擋。
+- **[low] kvRateLimit TTL**:INCR 後若 EXPIRE 漏設會永久鎖 IP,補上 TTL 重設防護。
+- **[medium] zkLogin 舊 localStorage 回退**:`getStoredSession` 改為清除而非載入殘留偽造 session。
+- **[info] i18n 孤兒鍵**:移除 `featureGroup1/2/3`。
+- **bey `record_*` dead code**:刻意保留(改 `public(package)` 後無 in-package 呼叫者,屬安全姿態)。
+
 ---
 
 ## 1. 總體結論
 
-**結論:目前狀態下不可上線(無論公開測試網大規模開放或主網)。** 本系統在「鏈上合約授權」與「後端身分驗證」兩個維度同時存在系統性破口,而非孤立缺陷。最致命的根因是:六個後端 API 路由全部用同一把熱錢包私鑰(`ADMIN_PRIVATE_KEY`,同時持有 SPARK `TreasuryCap` 與 `AdminCap`)代簽交易,且**完全以 client 請求 body 裡的 `address` 字串當作身分**——沒有任何簽名挑戰、session、CSRF 或 origin 檢查。任何人用一行 `curl` 即可:替任意地址鑄造 SPARK、用 `AdminCap` 無限鑄造 Bey 轉子、偽造任意對戰結果上鏈。防重放/防重領的去重機制在 faucet / claim-starter 用的是**進程內存 `Set`**,在 Vercel serverless 多實例與冷啟動下形同虛設,等於無限免費 SPARK + 免費卡包。鏈上層面 `spirit::mint`、`bey::record_*` 為完全公開無權限,任何玩家可自鑄傳說魂獸、自刷戰績;`tournament::distribute_prizes` 取不可變引用、可重複呼叫且鑄新幣發獎(而報名費卻被燒毀),代幣經濟的「收支守恆」根本不成立。整體風險姿態為**嚴重(Critical)**:這是一個功能可玩的 demo,但其信任模型把「全部權力集中在一把可被任意未驗證請求驅動的熱鑰」上,任一環節被觸發即等同整個遊戲經濟與資產系統被攻陷。
+> 註:以下為**原始審計當下**的結論(修復前快照)。目前的修復進度見頂部「修復狀態」表——多數 Critical/High 已修並上鏈/上線。
+
+**結論(原始):目前狀態下不可上線(無論公開測試網大規模開放或主網)。** 本系統在「鏈上合約授權」與「後端身分驗證」兩個維度同時存在系統性破口,而非孤立缺陷。最致命的根因是:六個後端 API 路由全部用同一把熱錢包私鑰(`ADMIN_PRIVATE_KEY`,同時持有 SPARK `TreasuryCap` 與 `AdminCap`)代簽交易,且**完全以 client 請求 body 裡的 `address` 字串當作身分**——沒有任何簽名挑戰、session、CSRF 或 origin 檢查。任何人用一行 `curl` 即可:替任意地址鑄造 SPARK、用 `AdminCap` 無限鑄造 Bey 轉子、偽造任意對戰結果上鏈。防重放/防重領的去重機制在 faucet / claim-starter 用的是**進程內存 `Set`**,在 Vercel serverless 多實例與冷啟動下形同虛設,等於無限免費 SPARK + 免費卡包。鏈上層面 `spirit::mint`、`bey::record_*` 為完全公開無權限,任何玩家可自鑄傳說魂獸、自刷戰績;`tournament::distribute_prizes` 取不可變引用、可重複呼叫且鑄新幣發獎(而報名費卻被燒毀),代幣經濟的「收支守恆」根本不成立。整體風險姿態為**嚴重(Critical)**:這是一個功能可玩的 demo,但其信任模型把「全部權力集中在一把可被任意未驗證請求驅動的熱鑰」上,任一環節被觸發即等同整個遊戲經濟與資產系統被攻陷。
 
 ## 2. 嚴重度統計(僅統計 CONFIRMED,共 41 項)
 
