@@ -7,7 +7,7 @@
 
 ## 修復狀態(2026-05-29 更新)
 
-新硬化套件已全新發布上鏈:`0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790`(testnet)。前端/Vercel 已切換。舊 testnet 資料已重置。
+新硬化套件已全新發布上鏈。**最新套件(2026-05-31,含 H-4 / M-1 修復):`0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377`**(testnet)。前端/Vercel 已切換,合約測試 180 passed,`register_rotor` 新簽章鏈上實測成功。舊 testnet 資料已隨全新發布重置。
 
 | 發現 | 狀態 | 說明 |
 |---|---|---|
@@ -16,7 +16,7 @@
 | **H-1** spirit::mint 公開 | ✅ 已修+上鏈 | 改為 `&AdminCap` 閘門 |
 | **H-2** 無上限鑄幣 | ✅ 已修+上鏈 | 單筆上限;鏈上實測超限 abort |
 | **H-3** record_*/add_xp 自刷 | ✅ 已修+上鏈 | 改 `public(package)`,PTB 無法呼叫 |
-| **H-4** battle_record 偽造 | ⏳ 部分 | API 層已要求 submitter 為參與者+驗簽;合約層 sender 斷言待辦 |
+| **H-4** battle_record 偽造 | ✅ 已修+上鏈 | `create` 改 `&AdminCap` 閘門——僅後端可鑄紀錄(後端已驗參與者+驗簽),任意玩家無法在自有 PTB 偽造;+ confirm→commit 負向/正向測試 |
 | **H-5~H-8** 免費刷取 | ✅ 已修+上線 | 移除 open-pack 免付款分支(實測 402);⚠️ faucet 一址一領仍為內存(需 Redis,task #21) |
 | **H-9** 匿名鑄陀螺 | ✅ 已修+上線 | register-rotor 需驗簽(401) |
 | **H-10** 偽造戰績 | ✅ 已修+上線 | submit-result 需參與者驗簽 + winner/scores 驗證 |
@@ -27,10 +27,10 @@
 | **L-1/L-3** deck 越界 / 溢付 | ✅ 已修+上鏈 | + 負向測試 |
 | **L-4/L-5** 錯誤洩漏 / 無界輸入 | ✅ 已修+上線 | 統一淨化 + 邊界驗證 |
 | **C-1/M-8** 單一熱鑰 | ⏳ 待辦 | 需金鑰輪替 / KMS / multisig(運營決策) |
-| **M-1** GameConfig 裝飾 | ⏳ 待辦 | 玩法未接 web,低優先 |
-| **L-2** marketplace | ⏳ 待辦 | 低 |
+| **M-1** GameConfig 裝飾 | ✅ 已修+上鏈 | 封禁已生效於 `register_rotor`(檢查 recipient)與 `open_pack`(檢查 recipient + 零件直接鑄給玩家);因 SPARK TreasuryCap 為 admin 所有、相關鑄造皆 admin 代簽,故以「玩家位址參數」而非 `ctx.sender()` 強制;`register_rotor` 鏈上實測 + 負向測試 |
+| **L-2** marketplace | ⏸️ 刻意延後 | marketplace 完全未接 web;為零用戶功能建版稅強制違反 YAGNI,且版稅率/收款人屬產品決策。待接上 web 時再做 |
 
-合約測試:**176 passed**。其餘待辦見 task #21 與下方路線圖。
+合約測試:**180 passed**(新增 H-4 紀錄建立/確認 + M-1 封禁正向/負向測試)。其餘待辦見下方路線圖。
 
 **合併前審查(多代理 + 對抗式驗證 + 線上 A/B,A/B 10/10 通過)額外修復:**
 - **[HIGH] open-pack 付款防重放 TOCTOU**:`verifyPayment` 原為非原子 `kvGet`→`kvSet`(中間隔 0–3.2s RPC),並發同 digest 可雙鑄。改用原子 `kvSetNX` 佔位 + 失敗 `kvDel` 釋放;並發實測一個佔位、另一個被擋。
@@ -38,6 +38,19 @@
 - **[medium] zkLogin 舊 localStorage 回退**:`getStoredSession` 改為清除而非載入殘留偽造 session。
 - **[info] i18n 孤兒鍵**:移除 `featureGroup1/2/3`。
 - **bey `record_*` dead code**:刻意保留(改 `public(package)` 後無 in-package 呼叫者,屬安全姿態)。
+
+---
+
+## 第二輪修復(2026-05-31,H-4 / M-1 全新發布)
+
+新套件:`0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377`。AdminCap `0xa295…5916`、GameConfig `0x3b37…d238`、SPARK Treasury `0x026b…4980`、FORGE Treasury `0x2ceb…7406`、TransferPolicy `0x60f7…9b63`。
+
+- **[H-4] battle_record::create 加 `&AdminCap` 閘門**:原 `public` 任何人可在自有 PTB 鑄出宣稱擊敗任意對手的紀錄。現僅後端(持 AdminCap)可建,而後端在 `submit-result` 已驗提交者為參與者 + 錢包簽名。`submit-result` route 補上 AdminCap 物件參數。
+- **[M-1] GameConfig 封禁生效**:`register_rotor` 加 `&GameConfig` 並 `assert!(!is_banned(config, recipient))`;`open_pack` 同樣以 `recipient` 參數檢查並**直接把零件鑄給玩家**(移除 admin→player 轉發交易)。
+  - **架構裁決**:SPARK `TreasuryCap` 為 admin 所有 ⇒ `open_pack` / `forge::*` 只能 admin 代簽 ⇒ 鏈上 `ctx.sender()` 永遠是 admin,對它做封禁檢查無效。故對 admin 代簽且帶玩家位址的入口(register / pack)以**位址參數**強制;`forge::*` 的 `ctx.sender()` 閘門因此**刻意不加**(無效且為死碼churn)。
+- **驗證**:`sui move test` 180 passed;`register_rotor` 新簽章以 admin 金鑰鏈上 `sui client call` 實測 `Status: Success`;web build ✓ Compiled、生產部署成功。
+- **附帶發現(超出審計範圍,未修)**:`forge::*`(evolve/fuse/retune)在 web 為玩家錢包簽署,卻引用 admin 所有的 SPARK `TreasuryCap` ⇒ 玩家簽的交易無法存取該 owned object ⇒ **forge 目前功能性失效**。屬既有功能 bug,非安全項;修法需把 TreasuryCap 移入受權限的共享 minter(同 C-1/H-2 建議)。
+- **L-2 marketplace**:刻意延後(未接 web;版稅為產品決策,建造未用基建違反 YAGNI)。
 
 ---
 
