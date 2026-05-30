@@ -7,12 +7,14 @@ import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
 
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 // Latest upgraded package (where executable Move code lives).
-const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790';
+const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
 // SPARK_TOKEN type identity is bound to the original defining package, so balance
 // queries use the original even though Move calls use the latest version.
-const ORIGINAL_PACKAGE_ID = '0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790';
+const ORIGINAL_PACKAGE_ID = '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
 const SPARK_TYPE = `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN`;
-const SPARK_TREASURY_CAP = '0x92e420d720485efa629681a15852d236fa31732b1d98e97b96a9a8f7749fa558';
+const SPARK_TREASURY_CAP = '0x026b064861338efe216e7d452736d9457f6bd2c84ddd48cc4149ed01811b4980';
+// M-1: open_pack asserts the recipient is not banned and mints parts directly to them.
+const GAME_CONFIG = '0x3b372a7a4f94e9b7e517a38aaaa6592b50ae2e67a343f0e8c56462d2226bd238';
 const SUI_RANDOM = '0x8';
 const RPC_URL = 'https://fullnode.testnet.sui.io:443';
 const PACK_COST = 100_000_000_000n;
@@ -140,6 +142,8 @@ export async function POST(request: NextRequest) {
 
     // Mint the pack cost fresh and feed it straight into open_pack, which burns it.
     // Net effect on the admin treasury is zero, so packs never deplete the admin.
+    // open_pack mints the 5 parts directly to `address` (the verified payer), so
+    // no second admin->player forwarding tx is needed.
     const tx = new Transaction();
     tx.setSender(admin);
     const payment = tx.moveCall({
@@ -148,7 +152,13 @@ export async function POST(request: NextRequest) {
     });
     tx.moveCall({
       target: `${PACKAGE_ID}::pack::open_pack`,
-      arguments: [payment, tx.object(SPARK_TREASURY_CAP), tx.object(SUI_RANDOM)],
+      arguments: [
+        payment,
+        tx.object(SPARK_TREASURY_CAP),
+        tx.object(GAME_CONFIG),
+        tx.pure.address(address),
+        tx.object(SUI_RANDOM),
+      ],
     });
 
     const bytes = await tx.build({ client });
@@ -175,23 +185,6 @@ export async function POST(request: NextRequest) {
       if (change.type === 'created' && isPart(change.objectType)) {
         createdParts.push(change.objectId);
       }
-    }
-
-    // open_pack transfers parts to the sender (admin); forward them to the player.
-    if (createdParts.length > 0) {
-      const transferTx = new Transaction();
-      transferTx.setSender(admin);
-      for (const partId of createdParts) {
-        transferTx.transferObjects([transferTx.object(partId)], address);
-      }
-      const transferBytes = await transferTx.build({ client });
-      const transferSig = await keypair.signTransaction(transferBytes);
-      await rpc('sui_executeTransactionBlock', [
-        Buffer.from(transferBytes).toString('base64'),
-        [transferSig.signature],
-        { showEffects: true },
-        'WaitForLocalExecution',
-      ]);
     }
 
     return NextResponse.json({

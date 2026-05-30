@@ -4,8 +4,8 @@ import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
 import { kvSetNX, kvDel } from '@/lib/kv';
 
 const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
-const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790';
-const SPARK_TREASURY_CAP = '0x92e420d720485efa629681a15852d236fa31732b1d98e97b96a9a8f7749fa558';
+const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
+const SPARK_TREASURY_CAP = '0x026b064861338efe216e7d452736d9457f6bd2c84ddd48cc4149ed01811b4980';
 const RPC_URL = 'https://fullnode.testnet.sui.io:443';
 const FAUCET_AMOUNT = '500000000000';
 const CLAIM_KEY = (addr: string) => `faucet_claimed:${addr}`;

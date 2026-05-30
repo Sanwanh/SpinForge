@@ -7,7 +7,9 @@ import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
 
 const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
-const ADMIN_CAP = '0xee5f4af8c32c0eab9cb1d85e1f96bebfe807c1e760c05c62d1961e55a9579ba8';
+const ADMIN_CAP = '0xa295ba12fb7bada3856be0075b374f66325b36f4561af9ee662834db2bec5916';
+// M-1: register_rotor now asserts the recipient is not on the GameConfig ban list.
+const GAME_CONFIG = '0x3b372a7a4f94e9b7e517a38aaaa6592b50ae2e67a343f0e8c56462d2226bd238';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 
 async function rpc(method: string, params: unknown[]) {
@@ -52,6 +54,7 @@ export async function POST(request: NextRequest) {
       target: `${PKG}::register::register_rotor`,
       arguments: [
         tx.object(ADMIN_CAP),
+        tx.object(GAME_CONFIG),
         tx.pure.string(bladeName),
         tx.pure.u8(spiritBeast ?? 0),
         tx.pure.u8(beyType ?? 0),

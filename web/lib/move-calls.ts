@@ -3,7 +3,6 @@ import {
   PACKAGE_ID,
   SPARK_TREASURY_CAP_ID,
   SPARK_TYPE,
-  SUI_RANDOM_ID,
 } from './constants';
 
 const SPARK_COIN_TYPE = `0x2::coin::Coin<${SPARK_TYPE}>`;
@@ -11,22 +10,6 @@ const SPARK_COIN_TYPE = `0x2::coin::Coin<${SPARK_TYPE}>`;
 function splitSparkPayment(tx: Transaction, sparkCoinId: string, amount: bigint) {
   const [payment] = tx.splitCoins(tx.object(sparkCoinId), [amount]);
   return payment;
-}
-
-// ===== Pack Opening =====
-
-export function openPack(sparkCoinId: string): Transaction {
-  const tx = new Transaction();
-  const payment = splitSparkPayment(tx, sparkCoinId, 100_000_000_000n);
-  tx.moveCall({
-    target: `${PACKAGE_ID}::pack::open_pack`,
-    arguments: [
-      payment,
-      tx.object(SPARK_TREASURY_CAP_ID),
-      tx.object(SUI_RANDOM_ID),
-    ],
-  });
-  return tx;
 }
 
 // ===== Assembly =====

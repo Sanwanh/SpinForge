@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const PKG_ORIG = '0x4f2b01b4c287e0b670600eb8074049635f60761146936ca9a14f650b24e60790';
+const PKG_ORIG = '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 
 async function rpc(method: string, params: unknown[]) {

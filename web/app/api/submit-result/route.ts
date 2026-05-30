@@ -7,6 +7,9 @@ import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
 
 const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
+// H-4: battle_record::create is now &AdminCap-gated so only the backend can mint
+// records (the participant check already happened above via wallet signature).
+const ADMIN_CAP = '0xa295ba12fb7bada3856be0075b374f66325b36f4561af9ee662834db2bec5916';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 const SUI_CLOCK = '0x6';
 
@@ -64,6 +67,7 @@ export async function POST(request: NextRequest) {
     const [record] = tx.moveCall({
       target: `${PKG}::battle_record::create`,
       arguments: [
+        tx.object(ADMIN_CAP),
         tx.pure.address(playerA),
         tx.pure.address(playerB),
         tx.pure.id(rotorA),
