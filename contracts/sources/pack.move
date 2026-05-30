@@ -6,9 +6,12 @@ module spinforge::pack {
     use spinforge::ratchet::{Self, Ratchet};
     use spinforge::bit::{Self, Bit};
     use spinforge::spark_token::SPARK_TOKEN;
+    use spinforge::admin::{Self, GameConfig};
 
     // ===== Error Codes =====
     const EInsufficientPayment: u64 = 0;
+    /// Caller is on the GameConfig ban list. (M-1)
+    const EPlayerBanned: u64 = 1;
 
     // ===== Constants =====
     const PACK_COST: u64 = 100_000_000_000; // 100 SPARK (9 decimals)
@@ -30,9 +33,15 @@ module spinforge::pack {
     entry fun open_pack(
         payment: Coin<SPARK_TOKEN>,
         treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
+        config: &GameConfig,
+        recipient: address,
         r: &Random,
         ctx: &mut TxContext,
     ) {
+        // M-1: banned players cannot mint new parts. open_pack is admin-relayed
+        // (the SPARK TreasuryCap is admin-owned), so the real buyer is the explicit
+        // `recipient` — checking ctx.sender() would only ever check the admin relay.
+        assert!(!admin::is_banned(config, recipient), EPlayerBanned);
         assert!(coin::value(&payment) >= PACK_COST, EInsufficientPayment);
         // L-3: burn only the exact cost; refund any overpayment to the buyer
         // instead of silently destroying it.
@@ -115,13 +124,14 @@ module spinforge::pack {
         vector::push_back(&mut bits, bit);
 
         event::emit(PackOpened {
-            owner: ctx.sender(),
+            owner: recipient,
             blade_count: 2,
             ratchet_count: 2,
             bit_count: 1,
         });
 
-        let sender = ctx.sender();
+        // Parts mint straight to the buyer (no admin -> player forwarding tx).
+        let sender = recipient;
         while (!vector::is_empty(&blades)) {
             transfer::public_transfer(vector::pop_back(&mut blades), sender);
         };

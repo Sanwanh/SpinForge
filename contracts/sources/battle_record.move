@@ -1,5 +1,6 @@
 module spinforge::battle_record {
     use sui::event;
+    use spinforge::admin::AdminCap;
 
     const ENotParticipant: u64 = 0;
     const EAlreadyConfirmed: u64 = 1;
@@ -40,7 +41,12 @@ module spinforge::battle_record {
         score_b: u8,
     }
 
+    // H-4: gated by &AdminCap so only the backend (which has already verified
+    // the submitter is a participant via wallet signature at the API layer) can
+    // mint a BattleRecord. Arbitrary players can no longer forge records in
+    // their own PTBs. Off-chain consumers must still trust only is_committed().
     public fun create(
+        _admin: &AdminCap,
         player_a: address,
         player_b: address,
         rotor_a: ID,
