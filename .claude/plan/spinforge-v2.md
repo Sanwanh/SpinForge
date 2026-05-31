@@ -2,12 +2,32 @@
 
 ## Project Name: **SpinForge**
 
-> Beyblade X-authentic blockchain card game on Sui Move.
-> Parts system, physics, and scoring faithfully mirror real competitive Beyblade.
+> An original blockchain spinning-top battler on Sui Move. Built on the **Four
+> Symbols** (青龍 / 朱雀 / 白虎 / 玄武 / 黃龍) — public-domain mythology, not a
+> licensed brand. Takes the universal 3-part assembly / physics / scoring battle
+> format and layers on true on-chain ownership and an open economy.
 
 ---
 
-## 1. Game Design — Grounded in Real Beyblade
+## 0. Positioning & IP (read first)
+
+SpinForge is **original IP**, not a Beyblade product or clone. Two layers:
+
+- **Safe to keep — the Four Symbols + Wu Xing** (青龍/朱雀/白虎/玄武/黃龍, 木火土金水):
+  public-domain Chinese mythology, fully ours to use. The *original* Beyblade also
+  drew on these guardians (via Dragoon/Dranzer/Driger/Draciel), but the mythology
+  itself predates and is independent of any brand.
+- **Rename before public launch — borrowed vocabulary**: terms taken from the
+  Beyblade X generation are placeholders only and must get original names —
+  e.g. `Beyblade`→`Bey`, `Beyblade X`→our brand, `Xtreme Dash/Finish`→an original
+  move name, the `{prongs}-{height}` ratchet shorthand→our own convention. The
+  *mechanics* (3-part assembly; spin / over / burst / dash scoring) are generic and
+  fine; only the brand-specific **names** carry IP risk.
+
+This doc still uses some borrowed terms inline for readability — treat every such
+term as a rename TODO, not a final name.
+
+## 1. Game Design — Grounded in Competitive Spinning-Top Play
 
 ### Core Loop
 ```
@@ -19,9 +39,9 @@ Open Packs -> Collect Parts (Blade/Ratchet/Bit NFTs)
   -> Compete in Tournaments
 ```
 
-### 1.1 Parts System (Faithful to Beyblade X)
+### 1.1 Parts System (Three-Part Assembly)
 
-Three interchangeable NFT parts per Beyblade, matching real Beyblade X:
+Three interchangeable NFT parts per Bey — an original three-part assembly system:
 
 | Part | Real Function | Game Stats | NFT? |
 |------|--------------|------------|------|
@@ -37,7 +57,7 @@ Three interchangeable NFT parts per Beyblade, matching real Beyblade X:
 - High ratchets (5-80, 7-80): raised contact, defensive profile
 - More prongs = more weight distributed outward = higher moment of inertia
 
-**Bit Types** (29+ varieties inspired by real Beyblade X):
+**Bit Types** (29+ original varieties):
 
 | Category | Examples | Behavior |
 |----------|----------|----------|
@@ -48,7 +68,7 @@ Three interchangeable NFT parts per Beyblade, matching real Beyblade X:
 
 ### 1.2 Spirit Beast System (Four Symbols / Wu Xing Cosmology)
 
-Instead of generic elements, use the actual mythological system from original Beyblade:
+Instead of generic elements, build on the public-domain **Four Symbols** of Chinese mythology — the four guardians plus a central fifth (Yellow Dragon) that classic spinning-top bit-beasts were *also* based on, but which belong to folklore, not any brand:
 
 | Spirit Beast | Chinese Name | Element | Direction | Season | Color | Stat Bonus |
 |-------------|-------------|---------|-----------|--------|-------|------------|
@@ -78,13 +98,13 @@ Wood -> Earth -> Water -> Fire -> Metal -> Wood
 
 ### 1.3 Battle System (Physics-Based)
 
-**Match Format**: 3on3 Deck (faithful to Beyblade X competitive)
+**Match Format**: 3-on-3 Deck (competitive standard)
 - Bring 3 assembled Beyblades
-- **No duplicate parts** across your deck (same as WBBA rules)
+- **No duplicate parts** across your deck (competitive standard)
 - Each round: both players secretly pick 1 of their remaining Beyblades
 - First to **7 points** wins the match
 
-**Scoring** (mirrors Beyblade X):
+**Scoring** (the standard spinning-top finish types — spin / over / burst / dash):
 
 | Finish Type | Points | Trigger |
 |-------------|--------|---------|
@@ -630,10 +650,10 @@ spinforge/
 
 ---
 
-## 9. Blockchain x Beyblade Authenticity
+## 9. Blockchain × Spinning-Top Authenticity
 
 1. **Physics-on-Chain**: AM, burst integrity, Xtreme Dash accuracy all computed on-chain
-2. **Ratchet Naming = NFT Identity**: "3-60 Gear Flat" reads like real Beyblade X combos
+2. **Ratchet Naming = NFT Identity**: a shorthand like "3-60 Gear Flat" reads like a real combo code (rename the format to our own convention before launch)
 3. **Xtreme Finish as Blockchain Event**: Most exciting moment = permanent on-chain record
 4. **Spin Direction Market Dynamics**: L-spin scarcity creates organic market cycles
 5. **Lock Tightness = Signed On-chain Decision**: Irreversible risk/reward commitment

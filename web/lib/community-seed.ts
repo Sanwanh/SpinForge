@@ -9,9 +9,10 @@
 //   - Friction: Needle = slow decay (stamina), Rush/Flat = fast decay (attack)
 //   - Ratchet: low (3-60) = low CoG/stability, high (5-80) = defensive; more prongs = more inertia
 //   - Xtreme Dash: a Gear bit on a Rail zone (smaller gear = faster, less accurate)
-// The archetypes mirror the real competitive Beyblade X meta (Attack low-ratchet
-// pressure / Stamina out-spin + Life-After-Death / Defense anti-KO), but use no
-// real product names — this is reference for SpinForge, not the physical toy.
+// The archetypes follow universal spinning-top battle principles (Attack
+// low-ratchet pressure / Stamina out-spin + Life-After-Death / Defense anti-KO),
+// expressed entirely in SpinForge's own Four-Symbols parts. Original setting —
+// no third-party product or brand names.
 
 export type Archetype = 'Attack' | 'Defense' | 'Stamina' | 'Balance';
 export type Difficulty = 'beginner' | 'intermediate' | 'advanced';
