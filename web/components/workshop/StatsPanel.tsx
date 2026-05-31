@@ -2,16 +2,58 @@
 
 import type { BeyPhysics } from '@/lib/physics-sim';
 import { useT } from '@/lib/i18n';
+import { Corners } from '@/components/design/atoms';
 
 interface StatsPanelProps {
   physics: BeyPhysics | null;
 }
 
-function Stat({ label, value, unit = '', color }: { label: string; value: number; unit?: string; color: string }) {
+// Approximate upper bounds (launchPower 100) used only to scale the bars.
+const MAX = {
+  am: 42000,
+  moi: 42000,
+  atk: 4200,
+  recoil: 3400,
+  burst: 500,
+  friction: 80,
+  mobility: 5,
+  gear: 12,
+} as const;
+
+function StatBar({
+  label,
+  value,
+  max,
+  unit = '',
+  color,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  unit?: string;
+  color: string;
+}) {
+  const pct = Math.max(3, Math.min(100, (value / max) * 100));
   return (
-    <div className="flex items-center justify-between py-1">
-      <span className="text-xs text-gray-500">{label}</span>
-      <span className="font-mono text-sm font-bold" style={{ color }}>{value}{unit}</span>
+    <div style={{ marginBottom: 13 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+        <span className="t-eyebrow" style={{ fontSize: 9.5, color: 'var(--text-dim)', letterSpacing: '0.12em' }}>{label}</span>
+        <span className="t-mono" style={{ fontSize: 14, fontWeight: 600, color }}>
+          {value.toLocaleString()}{unit}
+        </span>
+      </div>
+      <div style={{ height: 4, borderRadius: 3, background: 'var(--void)', overflow: 'hidden', border: '1px solid var(--border-soft)' }}>
+        <div
+          style={{
+            height: '100%',
+            width: `${pct}%`,
+            background: color,
+            borderRadius: 3,
+            boxShadow: `0 0 8px ${color}66`,
+            transition: 'width .4s ease',
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -21,25 +63,29 @@ export function StatsPanel({ physics }: StatsPanelProps) {
 
   if (!physics) {
     return (
-      <div className="card space-y-2">
-        <h3 className="text-sm font-bold text-gray-400">{t.workshop.statsPreview}</h3>
-        <p className="text-xs text-gray-600">Select all three parts to see combined stats</p>
+      <div className="panel" style={{ padding: 22, position: 'relative' }}>
+        <Corners />
+        <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 12 }}>{t.workshop.statsPreview}</div>
+        <p className="muted" style={{ fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+          Select all three parts to preview the combined on-chain stats.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="card space-y-1">
-      <h3 className="mb-2 text-sm font-bold text-white">{t.workshop.statsPreview}</h3>
-      <Stat label={t.workshop.angularMomentum} value={physics.angularMomentum} color="#3B82F6" />
-      <Stat label="Moment of Inertia" value={physics.momentOfInertia} color="#8B5CF6" />
-      <Stat label={t.workshop.attackPower} value={physics.attackPower} color="#EF4444" />
-      <Stat label="Recoil" value={physics.recoil} color="#F97316" />
-      <Stat label={t.workshop.burstIntegrity} value={physics.burstIntegrity} color="#A855F7" />
-      <Stat label="Friction" value={physics.frictionCoefficient} color="#F59E0B" />
-      <Stat label={t.workshop.mobility} value={physics.mobility} unit=" zones" color="#10B981" />
+    <div className="panel" style={{ padding: 22, position: 'relative' }}>
+      <Corners />
+      <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 16 }}>{t.workshop.statsPreview}</div>
+      <StatBar label={t.workshop.angularMomentum} value={physics.angularMomentum} max={MAX.am} color="#00CCFF" />
+      <StatBar label="MOMENT OF INERTIA" value={physics.momentOfInertia} max={MAX.moi} color="#8B5CF6" />
+      <StatBar label={t.workshop.attackPower} value={physics.attackPower} max={MAX.atk} color="#FF4444" />
+      <StatBar label="RECOIL" value={physics.recoil} max={MAX.recoil} color="#F97316" />
+      <StatBar label={t.workshop.burstIntegrity} value={physics.burstIntegrity} max={MAX.burst} color="#A855F7" />
+      <StatBar label="FRICTION" value={physics.frictionCoefficient} max={MAX.friction} color="#FFB800" />
+      <StatBar label={t.workshop.mobility} value={physics.mobility} max={MAX.mobility} unit=" zones" color="#00FF88" />
       {physics.gearRating > 0 && (
-        <Stat label="Gear Rating" value={physics.gearRating} unit="mm" color="#3B82F6" />
+        <StatBar label="GEAR RATING" value={physics.gearRating} max={MAX.gear} unit="mm" color="#00CCFF" />
       )}
     </div>
   );

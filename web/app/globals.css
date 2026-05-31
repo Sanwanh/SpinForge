@@ -418,6 +418,10 @@ body {
 .sf-col { flex-direction: column; }
 .sf-text-center { text-align: center; }
 
+/* Workshop assembly slots + connector */
+.sf-plus { font-family: var(--f-mono); font-size: 20px; line-height: 1; color: var(--gold); opacity: 0.45; user-select: none; }
+.part-slot-empty:hover { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 20px var(--gold-glow); }
+
 /* ═════════════════════ LEGACY TAILWIND HELPERS (kept for transition) ═════════════════════ */
 
 @layer components {

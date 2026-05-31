@@ -2,7 +2,9 @@
 
 import { motion } from 'framer-motion';
 import type { PartCardData } from '@/components/collection/PartCard';
-import { SPIRIT_BEASTS, ELEMENT_COLORS, type Element } from '@/lib/constants';
+import { Beyblade } from '@/components/design/Beyblade';
+import { ELEMENT_MAP, type ElementId, type BeyPaletteId } from '@/components/design/tokens';
+import { SPIRIT_BEASTS } from '@/lib/constants';
 
 interface AssemblyPreviewProps {
   blade: PartCardData | null;
@@ -10,48 +12,70 @@ interface AssemblyPreviewProps {
   bit: PartCardData | null;
 }
 
+const ELEMENT_TO_ID: Record<string, ElementId> = {
+  Wood: 'wood',
+  Fire: 'fire',
+  Metal: 'metal',
+  Water: 'water',
+  Earth: 'earth',
+};
+
 export function AssemblyPreview({ blade, ratchet, bit }: AssemblyPreviewProps) {
-  const allSelected = blade && ratchet && bit;
-  const spiritBeast = blade ? Number(blade.fields.spirit_beast ?? 0) : 0;
-  const beast = SPIRIT_BEASTS[spiritBeast];
-  const element = beast?.element as Element | undefined;
-  const color = element ? ELEMENT_COLORS[element] : '#6B7280';
+  const allSelected = !!(blade && ratchet && bit);
+  const spiritBeast = blade ? Number(blade.fields.spirit_beast ?? 0) : -1;
+  const beast = spiritBeast >= 0 ? SPIRIT_BEASTS[spiritBeast] : null;
+  const elementId = beast ? ELEMENT_TO_ID[String(beast.element)] : undefined;
+  // Yellow Dragon (Koryu, index 4) is the golden legendary.
+  const palette: BeyPaletteId = spiritBeast === 4 ? 'gold' : (elementId ?? 'gold');
+  const elMeta = elementId ? ELEMENT_MAP[elementId] : null;
+  const accent = elMeta?.color ?? 'var(--gold)';
+
+  const checklist = [
+    { k: 'Blade', ok: !!blade },
+    { k: 'Ratchet', ok: !!ratchet },
+    { k: 'Bit', ok: !!bit },
+  ];
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <motion.div
-        animate={allSelected ? { rotate: [0, 360], scale: [1, 1.05, 1] } : {}}
-        transition={{
-          rotate: { duration: 3, repeat: Infinity, ease: 'linear' },
-          scale: { duration: 2, repeat: Infinity },
-        }}
-        className="relative flex h-32 w-32 items-center justify-center"
-      >
-        <div
-          className="absolute inset-0 rounded-full border-4 transition-colors duration-300"
-          style={{ borderColor: blade ? color : '#374151', boxShadow: blade ? `0 0 20px ${color}40` : 'none' }}
-        />
-        <div
-          className="absolute inset-4 rounded-full border-2 transition-colors duration-300"
-          style={{ borderColor: ratchet ? '#94A3B8' : '#1F2937' }}
-        />
-        <div
-          className="h-8 w-8 rounded-full transition-colors duration-300"
-          style={{
-            backgroundColor: bit ? `${color}60` : '#111827',
-            border: bit ? `2px solid ${color}` : '2px solid #1F2937',
-          }}
-        />
-      </motion.div>
-      {allSelected ? (
-        <div className="text-center">
-          <p className="text-sm font-bold text-white">{beast?.name ?? 'Unknown'} Beast</p>
-          <p className="text-xs text-gray-400">Assembly Ready</p>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '4px 0' }}>
+      <div style={{ opacity: blade ? 1 : 0.45, transition: 'opacity .3s' }}>
+        <Beyblade size={188} element={palette} spinSpeed={1} paused={!allSelected} />
+      </div>
+
+      {allSelected && beast ? (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          style={{ textAlign: 'center' }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 700, color: accent }}>
+            {beast.name}
+            {elMeta && <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}> · {elMeta.beastNameZh}</span>}
+          </div>
+          <div className="t-mono" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 5, letterSpacing: '0.1em' }}>
+            {elMeta ? `${elMeta.k} ${String(beast.element).toUpperCase()} · ` : ''}READY TO FORGE
+          </div>
+        </motion.div>
       ) : (
-        <p className="text-xs text-gray-500">
-          {[!blade && 'Blade', !ratchet && 'Ratchet', !bit && 'Bit'].filter(Boolean).join(' + ')} needed
-        </p>
+        <div style={{ display: 'flex', gap: 16 }}>
+          {checklist.map((c) => (
+            <span
+              key={c.k}
+              className="t-mono"
+              style={{
+                fontSize: 11,
+                letterSpacing: '0.06em',
+                color: c.ok ? 'var(--gold)' : 'var(--text-dim)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+            >
+              <span>{c.ok ? '◆' : '◇'}</span>
+              {c.k}
+            </span>
+          ))}
+        </div>
       )}
     </div>
   );

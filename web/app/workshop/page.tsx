@@ -13,7 +13,7 @@ import type { PartCardData } from '@/components/collection/PartCard';
 import type { BladeStats, RatchetStats, BitStats } from '@/lib/physics-sim';
 import { assembleBey } from '@/lib/move-calls';
 import { useT } from '@/lib/i18n';
-import { PageHeader, Section, Eyebrow } from '@/components/design/atoms';
+import { PageHeader, Section, Eyebrow, Corners } from '@/components/design/atoms';
 import { useGuest } from '@/lib/guest';
 import { GuestEntry } from '@/components/shared/Guest';
 
@@ -54,6 +54,7 @@ export default function WorkshopPage() {
   const { blades, ratchets, bits, refetch } = useInventory();
   const { mutateAsync: signAndExecute, isPending } = useSignAndExecuteTransaction();
   const t = useT();
+  const isZh = t.nav.home === '首頁';
 
   const [selectedBlade, setSelectedBlade] = useState<PartCardData | null>(null);
   const [selectedRatchet, setSelectedRatchet] = useState<PartCardData | null>(null);
@@ -133,67 +134,64 @@ export default function WorkshopPage() {
       <Section style={{ paddingTop: 64, paddingBottom: 64 }}>
 
       {assembleError && (
-        <div
-          className="panel"
-          style={{ padding: 16, marginBottom: 16, borderColor: 'var(--blood)' }}
-        >
-          <p className="t-mono" style={{ color: 'var(--blood)', fontSize: 12, margin: 0 }}>
-            {assembleError}
-          </p>
+        <div className="panel" style={{ padding: 16, marginBottom: 20, position: 'relative', borderColor: 'var(--blood)' }}>
+          <Corners color="var(--blood)" />
+          <p className="t-mono" style={{ color: 'var(--blood)', fontSize: 12, margin: 0 }}>{assembleError}</p>
         </div>
       )}
       {assembleSuccess && (
-        <div
-          className="panel"
-          style={{ padding: 16, marginBottom: 16, borderColor: 'var(--wood)' }}
-        >
-          <p className="t-mono" style={{ color: 'var(--wood)', fontSize: 12, margin: 0 }}>
-            ✓ Beyblade assembled successfully! Check your collection.
-          </p>
+        <div className="panel" style={{ padding: 16, marginBottom: 20, position: 'relative', borderColor: 'var(--wood)' }}>
+          <Corners color="var(--wood)" />
+          <p className="t-mono" style={{ color: 'var(--wood)', fontSize: 12, margin: 0 }}>✓ {isZh ? '組裝完成 — 去收藏看看你的陀螺。' : 'Bey assembled — check your Collection.'}</p>
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Assembly area */}
-        <div className="card space-y-6 lg:col-span-2">
-          <div className="flex items-center justify-center gap-8">
+        <div className="panel lg:col-span-2" style={{ padding: 28, position: 'relative' }}>
+          <Corners />
+          <Eyebrow color="var(--gold)">ASSEMBLE · 組裝</Eyebrow>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap', marginTop: 24 }}>
             <PartSlot label={t.workshop.blade} partType="blade" part={selectedBlade} onSelect={() => setActiveSlot('blade')} onRemove={() => setSelectedBlade(null)} />
-            <span className="text-2xl text-gray-600">+</span>
+            <span className="sf-plus">+</span>
             <PartSlot label={t.workshop.ratchet} partType="ratchet" part={selectedRatchet} onSelect={() => setActiveSlot('ratchet')} onRemove={() => setSelectedRatchet(null)} />
-            <span className="text-2xl text-gray-600">+</span>
+            <span className="sf-plus">+</span>
             <PartSlot label={t.workshop.bit} partType="bit" part={selectedBit} onSelect={() => setActiveSlot('bit')} onRemove={() => setSelectedBit(null)} />
           </div>
 
+          <div style={{ borderTop: '1px solid var(--border-soft)', margin: '22px 0' }} />
+
           <AssemblyPreview blade={selectedBlade} ratchet={selectedRatchet} bit={selectedBit} />
 
-          {canAssemble && (
-            <div className="flex items-center gap-4">
-              <input
-                type="text"
-                placeholder="Name your Beyblade..."
-                value={beyName}
-                onChange={(e) => setBeyName(e.target.value)}
-                style={{
-                  flex: 1,
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'var(--void)',
-                  color: 'var(--text)',
-                  padding: '12px 16px',
-                  fontFamily: 'var(--f-body)',
-                  fontSize: 14,
-                  outline: 'none',
-                }}
-              />
-              <button onClick={handleAssemble} disabled={isPending} className="btn btn-primary">
-                {isPending ? `${t.workshop.assemble}...` : t.workshop.assemble}
-              </button>
-            </div>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 24 }}>
+            <input
+              type="text"
+              placeholder={isZh ? '為你的陀螺命名…' : 'Name your Bey…'}
+              value={beyName}
+              onChange={(e) => setBeyName(e.target.value)}
+              disabled={!(selectedBlade && selectedRatchet && selectedBit)}
+              style={{
+                flex: 1,
+                borderRadius: 8,
+                border: '1px solid var(--border)',
+                background: 'var(--void)',
+                color: 'var(--text)',
+                padding: '12px 16px',
+                fontFamily: 'var(--f-body)',
+                fontSize: 14,
+                outline: 'none',
+                opacity: selectedBlade && selectedRatchet && selectedBit ? 1 : 0.5,
+              }}
+            />
+            <button onClick={handleAssemble} disabled={!canAssemble || isPending} className="btn btn-primary" style={{ flexShrink: 0 }}>
+              {isPending ? `${t.workshop.assemble}…` : t.workshop.assemble}
+            </button>
+          </div>
         </div>
 
         {/* Stats panel */}
-        <div>
+        <div className="lg:col-span-1">
           <StatsPanel physics={physics} />
         </div>
       </div>
@@ -203,19 +201,7 @@ export default function WorkshopPage() {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ marginTop: 32 }}>
           <div className="sf-flex sf-justify-between sf-items-center" style={{ marginBottom: 16 }}>
             <Eyebrow>Select {activeSlot}</Eyebrow>
-            <button
-              onClick={() => setActiveSlot(null)}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-mute)',
-                fontFamily: 'var(--f-mono)',
-                fontSize: 11,
-                letterSpacing: '0.1em',
-                cursor: 'pointer',
-                textTransform: 'uppercase',
-              }}
-            >
+            <button onClick={() => setActiveSlot(null)} className="btn btn-ghost" style={{ fontSize: 11, padding: '6px 14px' }}>
               Close
             </button>
           </div>
