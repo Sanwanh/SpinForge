@@ -4,7 +4,7 @@ import { verifyAuth } from '@/lib/auth-verify';
 import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded } from '@/lib/api-guard';
 import { loadSigner } from '@/lib/admin-signer';
 
-const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
+const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 const SUI_CLOCK = '0x6';
 const MAX_NAME_LEN = 32;

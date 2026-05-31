@@ -5,7 +5,7 @@ import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded, belowMinSuiB
 import { loadSigner } from '@/lib/admin-signer';
 import { kvSetNX, kvDel } from '@/lib/kv';
 
-const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
+const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 const ORIG_PKG = '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 const SPARK_CAP = '0x095b18a88100dc11f9f1ec3047adf5ac0e497e03d1f7e3b5f50fc2dad9569e69';
 const SUI_RANDOM = '0x8';

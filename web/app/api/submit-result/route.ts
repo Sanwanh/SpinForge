@@ -4,7 +4,7 @@ import { verifyAuth } from '@/lib/auth-verify';
 import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded } from '@/lib/api-guard';
 import { loadSigner } from '@/lib/admin-signer';
 
-const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
+const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 // H-4: battle_record::create is now &AdminCap-gated so only the backend can mint
 // records (the participant check already happened above via wallet signature).
 const ADMIN_CAP = '0xe6f16e912dbd2a9ee58bc8207648e9225dfe00d95e4888ddcafa1b8239383090';
