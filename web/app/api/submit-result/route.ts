@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded } from '@/lib/api-guard';
+import { loadSigner } from '@/lib/admin-signer';
 
-const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
 // H-4: battle_record::create is now &AdminCap-gated so only the backend can mint
 // records (the participant check already happened above via wallet signature).
@@ -29,6 +27,12 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'submit-result', 30, 3600);
     if (limited) return limited;
+    // H-RT-1/H-RT-2: refuse to admin-sign records without Redis in prod, and cap
+    // total admin-signed record mints per hour as a circuit breaker.
+    const noRedis = requireRedis();
+    if (noRedis) return noRedis;
+    const overBudget = await adminBudgetExceeded('submit-result', 600, 3600);
+    if (overBudget) return overBudget;
     const { playerA, playerB, rotorA, rotorB, winner, finishType, scoreA, scoreB, submitter, authMessage, authSignature } = await request.json();
 
     if (!playerA || !playerB || !rotorA || !rotorB || !winner) {
@@ -54,9 +58,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid scores or finish type' }, { status: 400 });
     }
 
-    const { secretKey } = decodeSuiPrivateKey(ADMIN_KEY);
-    const keypair = Ed25519Keypair.fromSecretKey(secretKey);
-    const admin = keypair.getPublicKey().toSuiAddress();
+    // H-RT-3: recorder role holds only the AdminCap once keys are split.
+    const { keypair, address: admin } = loadSigner('recorder');
 
     const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
     const client = new SuiJsonRpcClient({ url: RPC, network: 'testnet' });

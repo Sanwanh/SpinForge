@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded, belowMinSuiBalance } from '@/lib/api-guard';
+import { loadSigner } from '@/lib/admin-signer';
 import { kvSetNX, kvDel } from '@/lib/kv';
 
-const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
 const SPARK_TREASURY_CAP = '0x026b064861338efe216e7d452736d9457f6bd2c84ddd48cc4149ed01811b4980';
 const RPC_URL = 'https://fullnode.testnet.sui.io:443';
@@ -26,6 +26,12 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'faucet', 10, 3600);
     if (limited) return limited;
+    // H-RT-1: refuse to mint without cross-instance dedup (Redis) in production.
+    const noRedis = requireRedis();
+    if (noRedis) return noRedis;
+    // H-RT-2: global hourly ceiling on free-SPARK grants (faucet + starter share it).
+    const overBudget = await adminBudgetExceeded('spark-grant', 300, 3600);
+    if (overBudget) return overBudget;
 
     const { address, authMessage, authSignature } = await request.json();
 
@@ -38,10 +44,9 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
-
-    if (!ADMIN_PRIVATE_KEY) {
-      return NextResponse.json({ error: 'Faucet not configured' }, { status: 500 });
-    }
+    // H-RT-2: require a funded wallet so free throwaway keypairs can't farm.
+    const underfunded = await belowMinSuiBalance(address, RPC_URL);
+    if (underfunded) return underfunded;
 
     // H-5: atomic one-claim-per-address (cross-instance once Redis is configured).
     // Reserve first; release below if the mint fails.
@@ -50,13 +55,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Already claimed. One faucet grant per address.' }, { status: 400 });
     }
 
-    const { Ed25519Keypair } = await import('@mysten/sui/keypairs/ed25519');
-    const { decodeSuiPrivateKey } = await import('@mysten/sui/cryptography');
     const { Transaction } = await import('@mysten/sui/transactions');
-
-    const { secretKey } = decodeSuiPrivateKey(ADMIN_PRIVATE_KEY);
-    const keypair = Ed25519Keypair.fromSecretKey(secretKey);
-    const sender = keypair.getPublicKey().toSuiAddress();
+    // H-RT-3: minter role holds only the SPARK TreasuryCap once keys are split.
+    const { keypair, address: sender } = loadSigner('minter');
 
     const tx = new Transaction();
     tx.setSender(sender);

@@ -5,10 +5,17 @@ module spinforge::forge_token {
     // ===== Error Codes =====
     /// A single mint call exceeded the per-call ceiling. (H-2)
     const EMintAmountTooLarge: u64 = 0;
+    /// Minting this amount would push total supply past MAX_SUPPLY. (H-RT-3)
+    const EMaxSupplyExceeded: u64 = 1;
 
     // ===== Constants =====
     /// Hard ceiling on a single mint call (100,000 FORGE at 9 decimals).
     const MAX_MINT_PER_CALL: u64 = 100_000_000_000_000;
+
+    /// H-RT-3: global hard cap on total minted supply — 100,000,000 FORGE at
+    /// 9 decimals (1e17 < u64::MAX). Bounds governance-token inflation even if
+    /// the TreasuryCap is compromised. Raising it requires a contract upgrade.
+    const MAX_SUPPLY: u64 = 100_000_000_000_000_000;
 
     // ===== OTW =====
 
@@ -48,6 +55,7 @@ module spinforge::forge_token {
         ctx: &mut TxContext,
     ) {
         assert!(amount <= MAX_MINT_PER_CALL, EMintAmountTooLarge);
+        assert!(coin::total_supply(treasury_cap) + amount <= MAX_SUPPLY, EMaxSupplyExceeded);
         let coin = coin::mint(treasury_cap, amount, ctx);
         event::emit(ForgeMinted { amount, recipient });
         transfer::public_transfer(coin, recipient);
@@ -59,6 +67,7 @@ module spinforge::forge_token {
         ctx: &mut TxContext,
     ): Coin<FORGE_TOKEN> {
         assert!(amount <= MAX_MINT_PER_CALL, EMintAmountTooLarge);
+        assert!(coin::total_supply(treasury_cap) + amount <= MAX_SUPPLY, EMaxSupplyExceeded);
         coin::mint(treasury_cap, amount, ctx)
     }
 

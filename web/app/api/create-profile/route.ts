@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded } from '@/lib/api-guard';
+import { loadSigner } from '@/lib/admin-signer';
 
-const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 const SUI_CLOCK = '0x6';
@@ -27,6 +25,11 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'create-profile', 20, 3600);
     if (limited) return limited;
+    // H-RT-1/H-RT-2: fail closed without Redis in prod + global hourly ceiling.
+    const noRedis = requireRedis();
+    if (noRedis) return noRedis;
+    const overBudget = await adminBudgetExceeded('create-profile', 400, 3600);
+    if (overBudget) return overBudget;
     const { address, displayName, authMessage, authSignature } = await request.json();
     if (!address || !displayName) {
       return NextResponse.json({ error: 'Missing address or displayName' }, { status: 400 });
@@ -39,9 +42,8 @@ export async function POST(request: NextRequest) {
     const auth = await verifyAuth(address, authMessage, authSignature);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
 
-    const { secretKey } = decodeSuiPrivateKey(ADMIN_KEY);
-    const keypair = Ed25519Keypair.fromSecretKey(secretKey);
-    const admin = keypair.getPublicKey().toSuiAddress();
+    // H-RT-3: recorder role (no cap needed — create_and_share is public).
+    const { keypair, address: admin } = loadSigner('recorder');
 
     const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
     const client = new SuiJsonRpcClient({ url: RPC, network: 'testnet' });
@@ -49,14 +51,16 @@ export async function POST(request: NextRequest) {
     const tx = new Transaction();
     tx.setSender(admin);
 
-    const [profile] = tx.moveCall({
-      target: `${PKG}::player_profile::create`,
+    // H-RT-4: create the profile as a SHARED object owned-by-record (`address`),
+    // so battle standings can only be settled by the AdminCap-gated backend.
+    tx.moveCall({
+      target: `${PKG}::player_profile::create_and_share`,
       arguments: [
         tx.pure.string(displayName),
+        tx.pure.address(address),
         tx.object(SUI_CLOCK),
       ],
     });
-    tx.transferObjects([profile], address);
 
     const bytes = await tx.build({ client });
     const { signature } = await keypair.signTransaction(bytes);

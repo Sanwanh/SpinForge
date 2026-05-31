@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded, belowMinSuiBalance } from '@/lib/api-guard';
+import { loadSigner } from '@/lib/admin-signer';
 import { kvSetNX, kvDel } from '@/lib/kv';
 
-const ADMIN_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
 const ORIG_PKG = '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
 const SPARK_CAP = '0x026b064861338efe216e7d452736d9457f6bd2c84ddd48cc4149ed01811b4980';
@@ -30,19 +28,27 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'claim-starter', 10, 3600);
     if (limited) return limited;
+    // H-RT-1: refuse to mint without cross-instance dedup (Redis) in production.
+    const noRedis = requireRedis();
+    if (noRedis) return noRedis;
+    // H-RT-2: global hourly ceiling on free-SPARK grants (faucet + starter share it).
+    const overBudget = await adminBudgetExceeded('spark-grant', 300, 3600);
+    if (overBudget) return overBudget;
     const { address, authMessage, authSignature } = await request.json();
     if (!address) return NextResponse.json({ error: 'Missing address' }, { status: 400 });
     const auth = await verifyAuth(address, authMessage, authSignature);
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
+    // H-RT-2: require a funded wallet so free throwaway keypairs can't farm.
+    const underfunded = await belowMinSuiBalance(address, RPC);
+    if (underfunded) return underfunded;
     // H-5: atomic one-per-address; released below on failure.
     const firstClaim = await kvSetNX(CLAIM_KEY(address), 60 * 60 * 24 * 365);
     if (!firstClaim) {
       return NextResponse.json({ error: 'Already claimed starter pack.' }, { status: 400 });
     }
 
-    const { secretKey } = decodeSuiPrivateKey(ADMIN_KEY);
-    const keypair = Ed25519Keypair.fromSecretKey(secretKey);
-    const admin = keypair.getPublicKey().toSuiAddress();
+    // H-RT-3: minter role (SPARK TreasuryCap) once keys are split.
+    const { keypair, address: admin } = loadSigner('minter');
 
     const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
     const client = new SuiJsonRpcClient({ url: RPC, network: 'testnet' });

@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
-import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 import { kvSetNX, kvDel } from '@/lib/kv';
-import { isSameOrigin, safeError, rateLimited } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded } from '@/lib/api-guard';
+import { loadSigner } from '@/lib/admin-signer';
 
-const ADMIN_PRIVATE_KEY = process.env.ADMIN_PRIVATE_KEY ?? '';
 // Latest upgraded package (where executable Move code lives).
 const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
 // SPARK_TOKEN type identity is bound to the original defining package, so balance
@@ -111,19 +109,24 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'open-pack', 30, 3600);
     if (limited) return limited;
+    // H-RT-1: the payment-replay guard (used_payment:<digest>) is per-instance
+    // without Redis — refuse to open packs without it in production.
+    const noRedis = requireRedis();
+    if (noRedis) return noRedis;
+    // H-RT-2: global hourly ceiling on admin-signed pack mints.
+    const overBudget = await adminBudgetExceeded('open-pack', 600, 3600);
+    if (overBudget) return overBudget;
     const { address, paymentDigest } = await request.json();
 
     if (!address || typeof address !== 'string') {
       return NextResponse.json({ error: 'Missing address' }, { status: 400 });
     }
 
-    if (!ADMIN_PRIVATE_KEY) {
-      return NextResponse.json({ error: 'Server not configured' }, { status: 500 });
-    }
-
-    const { secretKey } = decodeSuiPrivateKey(ADMIN_PRIVATE_KEY);
-    const keypair = Ed25519Keypair.fromSecretKey(secretKey);
-    const admin = keypair.getPublicKey().toSuiAddress();
+    // H-RT-3: minter role (SPARK TreasuryCap) once keys are split. NOTE: the pack
+    // payment is verified to have reached this signer's address (treasury), so if
+    // MINTER_PRIVATE_KEY is provisioned, the frontend payment target must point to
+    // the minter address too — see docs/KEY_ROTATION_RUNBOOK.md.
+    const { keypair, address: admin } = loadSigner('minter');
 
     // H-5~H-8: a verified on-chain payment is REQUIRED for every pack. The old
     // "gas-free" branch only checked balance and never deducted, so anyone
