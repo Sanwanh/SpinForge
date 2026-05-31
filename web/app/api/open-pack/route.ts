@@ -5,14 +5,14 @@ import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded
 import { loadSigner } from '@/lib/admin-signer';
 
 // Latest upgraded package (where executable Move code lives).
-const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
+const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 // SPARK_TOKEN type identity is bound to the original defining package, so balance
 // queries use the original even though Move calls use the latest version.
-const ORIGINAL_PACKAGE_ID = '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
+const ORIGINAL_PACKAGE_ID = '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 const SPARK_TYPE = `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN`;
-const SPARK_TREASURY_CAP = '0x026b064861338efe216e7d452736d9457f6bd2c84ddd48cc4149ed01811b4980';
+const SPARK_TREASURY_CAP = '0x095b18a88100dc11f9f1ec3047adf5ac0e497e03d1f7e3b5f50fc2dad9569e69';
 // M-1: open_pack asserts the recipient is not banned and mints parts directly to them.
-const GAME_CONFIG = '0x3b372a7a4f94e9b7e517a38aaaa6592b50ae2e67a343f0e8c56462d2226bd238';
+const GAME_CONFIG = '0xa72dad0e0757d98fad022feae4dd64f5281ad89db246c4377f714080e26ab41a';
 const SUI_RANDOM = '0x8';
 const RPC_URL = 'https://fullnode.testnet.sui.io:443';
 const PACK_COST = 100_000_000_000n;

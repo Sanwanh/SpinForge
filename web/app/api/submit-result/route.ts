@@ -7,7 +7,7 @@ import { loadSigner } from '@/lib/admin-signer';
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
 // H-4: battle_record::create is now &AdminCap-gated so only the backend can mint
 // records (the participant check already happened above via wallet signature).
-const ADMIN_CAP = '0xa295ba12fb7bada3856be0075b374f66325b36f4561af9ee662834db2bec5916';
+const ADMIN_CAP = '0xe6f16e912dbd2a9ee58bc8207648e9225dfe00d95e4888ddcafa1b8239383090';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 const SUI_CLOCK = '0x6';
 

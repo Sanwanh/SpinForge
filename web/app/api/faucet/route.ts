@@ -4,8 +4,8 @@ import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded
 import { loadSigner } from '@/lib/admin-signer';
 import { kvSetNX, kvDel } from '@/lib/kv';
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
-const SPARK_TREASURY_CAP = '0x026b064861338efe216e7d452736d9457f6bd2c84ddd48cc4149ed01811b4980';
+const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
+const SPARK_TREASURY_CAP = '0x095b18a88100dc11f9f1ec3047adf5ac0e497e03d1f7e3b5f50fc2dad9569e69';
 const RPC_URL = 'https://fullnode.testnet.sui.io:443';
 const FAUCET_AMOUNT = '500000000000';
 const CLAIM_KEY = (addr: string) => `faucet_claimed:${addr}`;

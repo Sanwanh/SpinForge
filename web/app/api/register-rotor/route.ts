@@ -5,9 +5,9 @@ import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded
 import { loadSigner } from '@/lib/admin-signer';
 
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
-const ADMIN_CAP = '0xa295ba12fb7bada3856be0075b374f66325b36f4561af9ee662834db2bec5916';
+const ADMIN_CAP = '0xe6f16e912dbd2a9ee58bc8207648e9225dfe00d95e4888ddcafa1b8239383090';
 // M-1: register_rotor now asserts the recipient is not on the GameConfig ban list.
-const GAME_CONFIG = '0x3b372a7a4f94e9b7e517a38aaaa6592b50ae2e67a343f0e8c56462d2226bd238';
+const GAME_CONFIG = '0xa72dad0e0757d98fad022feae4dd64f5281ad89db246c4377f714080e26ab41a';
 const RPC = 'https://fullnode.testnet.sui.io:443';
 
 async function rpc(method: string, params: unknown[]) {

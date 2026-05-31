@@ -1,10 +1,10 @@
 // ---- Network ----
 export const SUI_NETWORK = 'testnet' as const;
-// Hardened package, fresh publish 2026-05-30 (audit remediation: H-4 AdminCap-gated
-// battle records + M-1 GameConfig ban enforcement on register_rotor/open_pack).
+// Hardened package, fresh publish 2026-05-31 (red-team remediation: H-RT-4
+// AdminCap-gated player_profile + shared profile; H-RT-3 SPARK/FORGE MAX_SUPPLY).
 // Fresh publish => PACKAGE_ID and ORIGINAL_PACKAGE_ID are the same.
-export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
-export const ORIGINAL_PACKAGE_ID = '0x0d072582b7058f0bc709462add402df73a36b8371ef3628840397a743ee2c377';
+export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
+export const ORIGINAL_PACKAGE_ID = '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 
 // Treasury / admin address — pack payments are sent here (real SPARK charge for
 // wallet players). This is a public address, never the private key.
@@ -14,11 +14,11 @@ export const TREASURY_ADDRESS = '0x6728bc6ed415fad991328142c556e6130c2866f999b07
 export const PACK_COST_MIST = 100_000_000_000n;
 
 // ---- Deployed Object IDs ----
-export const ADMIN_CAP_ID = '0xa295ba12fb7bada3856be0075b374f66325b36f4561af9ee662834db2bec5916';
-export const GAME_CONFIG_ID = '0x3b372a7a4f94e9b7e517a38aaaa6592b50ae2e67a343f0e8c56462d2226bd238';
-export const SPARK_TREASURY_CAP_ID = '0x026b064861338efe216e7d452736d9457f6bd2c84ddd48cc4149ed01811b4980';
-export const FORGE_TREASURY_CAP_ID = '0x2ceb69214b7f7307df3a6ecce896c79d2b726e09fb7755da77ab1b9c82727406';
-export const TRANSFER_POLICY_ID = '0x60f76856e08da9d434a2d5c27ba949cfa1833c9ea34e6bf86823e3cda2bc9b63';
+export const ADMIN_CAP_ID = '0xe6f16e912dbd2a9ee58bc8207648e9225dfe00d95e4888ddcafa1b8239383090';
+export const GAME_CONFIG_ID = '0xa72dad0e0757d98fad022feae4dd64f5281ad89db246c4377f714080e26ab41a';
+export const SPARK_TREASURY_CAP_ID = '0x095b18a88100dc11f9f1ec3047adf5ac0e497e03d1f7e3b5f50fc2dad9569e69';
+export const FORGE_TREASURY_CAP_ID = '0x646620870daec249f3e8f2ccc003749713def637e1a391a812c58ceaff8e856a';
+export const TRANSFER_POLICY_ID = '0xcfe28fa4843823f9ecefd726e9a49b82c43cda250e1b9712d2b22edb7ecd0ec5';
 export const SUI_RANDOM_ID = '0x8';
 // SPARK_TOKEN type is bound to the ORIGINAL defining package, not upgraded versions.
 export const SPARK_TYPE = `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN`;
