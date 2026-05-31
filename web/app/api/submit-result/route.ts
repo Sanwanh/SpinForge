@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded } from '@/lib/api-guard';
 import { loadSigner } from '@/lib/admin-signer';
 
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
@@ -27,10 +27,7 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'submit-result', 30, 3600);
     if (limited) return limited;
-    // H-RT-1/H-RT-2: refuse to admin-sign records without Redis in prod, and cap
-    // total admin-signed record mints per hour as a circuit breaker.
-    const noRedis = requireRedis();
-    if (noRedis) return noRedis;
+    // H-RT-2: cap total admin-signed record mints per hour as a circuit breaker.
     const overBudget = await adminBudgetExceeded('submit-result', 600, 3600);
     if (overBudget) return overBudget;
     const { playerA, playerB, rotorA, rotorB, winner, finishType, scoreA, scoreB, submitter, authMessage, authSignature } = await request.json();

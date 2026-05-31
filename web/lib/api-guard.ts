@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kvRateLimit, usingRedis } from '@/lib/kv';
+import { kvRateLimit } from '@/lib/kv';
 
 // Same-origin check (M-4). Blocks cross-site browser-driven calls to the
 // admin-signed routes. Not a substitute for the wallet-signature auth — a raw
@@ -43,23 +43,15 @@ export async function rateLimited(
   return NextResponse.json({ error: 'Too many requests — slow down.' }, { status: 429 });
 }
 
-/**
- * H-RT-1: fail-closed when no Redis is configured in production. The per-address
- * dedup (faucet/starter), payment-replay guard (open-pack) and rate limits all
- * collapse to a per-instance in-memory Map when Redis is absent — on Vercel's
- * multi-instance serverless that defeats every cross-instance guarantee. Refuse
- * to mint rather than mint without protection. Local dev (NODE_ENV !== production)
- * keeps the in-memory fallback so single-instance development still works.
- */
-export function requireRedis(): NextResponse | null {
-  if (process.env.NODE_ENV === 'production' && !usingRedis) {
-    return NextResponse.json(
-      { error: 'Service temporarily unavailable.' },
-      { status: 503 },
-    );
-  }
-  return null;
-}
+// H-RT-1 note: Redis is OPTIONAL by design (no platform lock-in, no extra cost).
+// When KV_REST_API_URL/TOKEN are set, kv.ts uses Redis and every dedup/replay/
+// rate-limit guard becomes cross-instance atomic automatically — no code change.
+// Without it, guards fall back to a per-instance in-memory Map (correct on a
+// single instance; degraded across serverless instances). For testnet this is
+// acceptable (SPARK has no value, and belowMinSuiBalance + adminBudgetExceeded
+// already raise the abuse bar). For MAINNET, enforce one-claim-per-address
+// ON-CHAIN via a shared Registry object (platform-independent, gas-only) — see
+// docs/KEY_ROTATION_RUNBOOK.md. That is strictly stronger than Redis.
 
 /**
  * H-RT-2: global circuit breaker on admin-signed minting. Independent of any

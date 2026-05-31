@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded, belowMinSuiBalance } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded, belowMinSuiBalance } from '@/lib/api-guard';
 import { loadSigner } from '@/lib/admin-signer';
 import { kvSetNX, kvDel } from '@/lib/kv';
 
@@ -28,9 +28,6 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'claim-starter', 10, 3600);
     if (limited) return limited;
-    // H-RT-1: refuse to mint without cross-instance dedup (Redis) in production.
-    const noRedis = requireRedis();
-    if (noRedis) return noRedis;
     // H-RT-2: global hourly ceiling on free-SPARK grants (faucet + starter share it).
     const overBudget = await adminBudgetExceeded('spark-grant', 300, 3600);
     if (overBudget) return overBudget;

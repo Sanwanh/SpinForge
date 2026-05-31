@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { kvSetNX, kvDel } from '@/lib/kv';
-import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded } from '@/lib/api-guard';
 import { loadSigner } from '@/lib/admin-signer';
 
 // Latest upgraded package (where executable Move code lives).
@@ -109,10 +109,6 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'open-pack', 30, 3600);
     if (limited) return limited;
-    // H-RT-1: the payment-replay guard (used_payment:<digest>) is per-instance
-    // without Redis — refuse to open packs without it in production.
-    const noRedis = requireRedis();
-    if (noRedis) return noRedis;
     // H-RT-2: global hourly ceiling on admin-signed pack mints.
     const overBudget = await adminBudgetExceeded('open-pack', 600, 3600);
     if (overBudget) return overBudget;

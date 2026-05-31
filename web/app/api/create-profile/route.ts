@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@mysten/sui/transactions';
 import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, safeError, rateLimited, requireRedis, adminBudgetExceeded } from '@/lib/api-guard';
+import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded } from '@/lib/api-guard';
 import { loadSigner } from '@/lib/admin-signer';
 
 const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '';
@@ -25,9 +25,7 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'create-profile', 20, 3600);
     if (limited) return limited;
-    // H-RT-1/H-RT-2: fail closed without Redis in prod + global hourly ceiling.
-    const noRedis = requireRedis();
-    if (noRedis) return noRedis;
+    // H-RT-2: global hourly ceiling on admin-signed profile mints.
     const overBudget = await adminBudgetExceeded('create-profile', 400, 3600);
     if (overBudget) return overBudget;
     const { address, displayName, authMessage, authSignature } = await request.json();
