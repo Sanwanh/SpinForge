@@ -68,6 +68,7 @@ export const NAV_PAGES: NavPage[] = [
   { id: 'passport',    label: 'Passport',   href: '/passport',    group: 1 },
   { id: 'battle',      label: 'Battle',     href: '/battle',      group: 2 },
   { id: 'friends',     label: 'Friends',    href: '/friends',     group: 2 },
+  { id: 'community',   label: 'Combos',     href: '/community',    group: 2 },
   { id: 'cards',       label: 'Collection', href: '/collection',  group: 2 },
   { id: 'workshop',    label: 'Workshop',   href: '/workshop',    group: 2 },
   { id: 'gacha',       label: 'Packs',      href: '/packs',       group: 3 },
@@ -84,6 +85,7 @@ export function activePageId(pathname: string): string {
   if (pathname.startsWith('/packs')) return 'gacha';
   if (pathname.startsWith('/battle')) return 'battle';
   if (pathname.startsWith('/friends')) return 'friends';
+  if (pathname.startsWith('/community')) return 'community';
   if (pathname.startsWith('/forge')) return 'forge';
   if (pathname.startsWith('/market')) return 'cards';
   if (pathname.startsWith('/elements')) return 'index';

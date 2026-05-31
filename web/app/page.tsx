@@ -261,7 +261,7 @@ function Hero({ ctas }: { ctas: React.ReactNode }) {
 
 interface FeatureItem { id: string; title: string; k: string; desc: string; color: string; href: string }
 
-// The four systems that actually work end-to-end today. Order = the player's path.
+// The core systems players use today. Order = the player's path.
 function coreFeatures(isZh: boolean): FeatureItem[] {
   return [
     {
@@ -283,6 +283,11 @@ function coreFeatures(isZh: boolean): FeatureItem[] {
       id: 'battle', k: '戰', color: 'var(--blood)', href: '/battle',
       title: isZh ? '對戰紀錄' : 'Battle Record',
       desc: isZh ? '登錄你的實體對戰,結果由雙方確認後永久寫上鏈。' : 'Log your physical battles — results are confirmed by both players and written on-chain.',
+    },
+    {
+      id: 'community', k: '攻', color: 'var(--water)', href: '/community',
+      title: isZh ? '組合攻略' : 'Combos & Tips',
+      desc: isZh ? '看推薦的強力組合,分享你的配置,一起討論怎麼搭最強。' : 'Browse recommended strong combos, share your own, and discuss what wins.',
     },
   ];
 }
