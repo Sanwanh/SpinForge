@@ -12,31 +12,51 @@ async function rpc(method: string, params: unknown[]) {
   return res.json();
 }
 
+// H-RT-4: rank by the forgery-resistant `BattleRecordCommitted` event, NOT the
+// self-reportable `player_profile::ProfileUpdated.elo`. `record_battle_result`
+// is a public, ungated mutator on a player-owned object, so any user can pump
+// their own ELO/wins in their own PTB and top a ProfileUpdated-based board.
+// `BattleRecordCommitted` only fires when BOTH participants confirm a record
+// that was minted by the AdminCap-gated backend (battle_record::create), which
+// already verified the submitter is a participant — a single player cannot forge
+// it. We aggregate wins per winner address from those committed records.
+interface CommittedEvent {
+  winner?: string;
+  finish_type?: number;
+  score_a?: number;
+  score_b?: number;
+}
+
+interface Standing {
+  address: string;
+  wins: number;
+  xtremeFinishes: number;
+}
+
+const FINISH_XTREME = 3;
+
 export async function GET() {
   const result = await rpc('suix_queryEvents', [
-    { MoveEventType: `${PKG_ORIG}::player_profile::ProfileUpdated` },
+    { MoveEventType: `${PKG_ORIG}::battle_record::BattleRecordCommitted` },
     null,
-    50,
+    200,
     true,
   ]);
 
-  const profileMap = new Map<string, { wins: number; losses: number; elo: number }>();
+  const standings = new Map<string, Standing>();
 
   for (const e of result.result?.data ?? []) {
-    const pj = e.parsedJson as { profile_id?: string; wins?: number; losses?: number; elo?: number };
-    const id = pj.profile_id as string;
-    if (id) {
-      profileMap.set(id, {
-        wins: pj.wins ?? 0,
-        losses: pj.losses ?? 0,
-        elo: pj.elo ?? 1000,
-      });
-    }
+    const pj = e.parsedJson as CommittedEvent;
+    const winner = pj.winner;
+    if (!winner) continue;
+    const cur = standings.get(winner) ?? { address: winner, wins: 0, xtremeFinishes: 0 };
+    cur.wins += 1;
+    if (Number(pj.finish_type) === FINISH_XTREME) cur.xtremeFinishes += 1;
+    standings.set(winner, cur);
   }
 
-  const leaderboard = Array.from(profileMap.entries())
-    .map(([id, stats]) => ({ profileId: id, ...stats }))
-    .sort((a, b) => b.elo - a.elo)
+  const leaderboard = Array.from(standings.values())
+    .sort((a, b) => b.wins - a.wins || b.xtremeFinishes - a.xtremeFinishes)
     .slice(0, 20);
 
   return NextResponse.json({ leaderboard });
