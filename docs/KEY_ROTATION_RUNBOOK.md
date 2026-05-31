@@ -1,5 +1,29 @@
 # SpinForge — Key Rotation & Redeploy Runbook
 
+## ✅ EXECUTED 2026-05-31 — capability split + hot-key rotation done
+
+The single hot key `0x6728…1941fb` (previously held everything) has been split and
+retired from the hot path. Current on-chain capability topology (testnet):
+
+| Role | Address | Holds | Where the private key lives |
+|------|---------|-------|------------------------------|
+| **MINTER** (hot) | `0xe50ccc…5c2e` | SPARK + FORGE `TreasuryCap` | Vercel `MINTER_PRIVATE_KEY` (prod) + local keystore |
+| **RECORDER** (hot) | `0x1ddf6e…1b36` | `AdminCap` | Vercel `RECORDER_PRIVATE_KEY` (prod) + local keystore |
+| **COLD** | `0x17170243…2bde` | `UpgradeCap`, `Publisher`, `TransferPolicyCap` | local keystore only — **never in any env** |
+| ~~OLD `0x6728…1941fb`~~ | — | **nothing** (only leftover SUI gas) | leaked key — now powerless on-chain |
+
+Done: caps transferred + verified; `TREASURY_ADDRESS` → MINTER; Vercel
+`MINTER_PRIVATE_KEY`/`RECORDER_PRIVATE_KEY` set, `ADMIN_PRIVATE_KEY` removed;
+prod redeploy READY; end-to-end mint by MINTER succeeded (digest `HKEGc3…`).
+
+**Still manual (your action):**
+1. **KMS/HSM** — swap `web/lib/admin-signer.ts` (single load point) for a KMS signer so MINTER/RECORDER raw keys leave `process.env` entirely.
+2. **Move the COLD key offline/hardware** — it holds `UpgradeCap` (can rewrite all contract code). Fund it with gas only when performing an upgrade.
+3. **Local cleanup** — delete the old key from `web/.env.local` (M-8); it is now powerless but should not linger in plaintext. Guard the local keystore copies of MINTER/RECORDER.
+4. The running prod function still carries the now-powerless `ADMIN_PRIVATE_KEY` until the next deploy purges it.
+
+---
+
 > 對應紅隊發現 **H-RT-3 / C-1 / M-8**(金鑰)與 **H-RT-4 / H-RT-3**(合約)。
 > 程式碼變更已在本 repo 完成並通過 `sui move test`(185 passed)與 `tsc --noEmit`。
 > 本文件列出**只能由你執行的不可逆步驟**(動用真實私鑰、上鏈、改部署環境)。
