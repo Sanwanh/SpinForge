@@ -6,9 +6,11 @@ export const SUI_NETWORK = 'testnet' as const;
 export const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 export const ORIGINAL_PACKAGE_ID = '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
 
-// Treasury / admin address — pack payments are sent here (real SPARK charge for
-// wallet players). This is a public address, never the private key.
-export const TREASURY_ADDRESS = '0x6728bc6ed415fad991328142c556e6130c2866f999b07eabec17e92efd1941fb';
+// Treasury address — pack payments are sent here. After the C-1/H-RT-3 key split
+// this is the MINTER address (holds the SPARK TreasuryCap and signs open-pack),
+// so payment verification (payment must reach the signer) stays consistent.
+// Public address, never the private key.
+export const TREASURY_ADDRESS = '0xe50ccc8220289e27588b05c9a5a2194bbd6869a36ee003a6c7d7b8daf5435c2e';
 
 // Pack cost in MIST (9 decimals): 100 SPARK.
 export const PACK_COST_MIST = 100_000_000_000n;
