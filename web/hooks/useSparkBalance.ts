@@ -7,7 +7,7 @@ import { api } from '@/lib/api-fetch';
 import { SPARK_TYPE } from '@/lib/constants';
 
 // SPARK balance is now read from the authoritative off-chain ledger (economy.ts)
-// via the session-authenticated GET /api/economy. The ledger stores whole-SPARK
+// via the session-authenticated GET /api/balance. The ledger stores whole-SPARK
 // integers, so no on-chain coin query / 1e9 decimal conversion is needed.
 export function useSparkBalance() {
   const { data: session } = useSession();
@@ -23,7 +23,7 @@ export function useSparkBalance() {
     }
     setIsLoading(true);
     try {
-      const res = await api('/api/economy?currency=SPARK');
+      const res = await api('/api/balance');
       if (res.ok) {
         const data = await res.json();
         setBalance(Number(data.balance ?? 0));

@@ -59,9 +59,15 @@ export interface SortedInventory {
   beys: PartObject[];
 }
 
+const PART_KINDS: PartKind[] = ['blade', 'ratchet', 'bit', 'bey'];
+
 /** Map a raw inventory item to the client PartObject shape (fields flattened). */
 export function toPartObject(item: InventoryItem): PartObject | null {
-  const kind = classifyType(item.objectType);
+  // `objectType` from /api/inventory is already the short kind ('blade'/…); fall
+  // back to classifying the fully-qualified content type if it's something else.
+  const kind = PART_KINDS.includes(item.objectType as PartKind)
+    ? (item.objectType as PartKind)
+    : classifyType(item.content?.type ?? '');
   if (!kind) return null;
   return { objectId: item.objectId, type: kind, fields: fieldsOf(item.content) };
 }
