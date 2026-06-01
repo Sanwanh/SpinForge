@@ -1,29 +1,27 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useCurrentAccount, useSuiClient, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
-import { Transaction } from '@mysten/sui/transactions';
-import { RARITY_LABELS, SPIRIT_BEASTS, ELEMENT_COLORS, TREASURY_ADDRESS, PACK_COST_MIST, type Rarity, type Element } from '@/lib/constants';
+import { RARITY_LABELS, SPIRIT_BEASTS, ELEMENT_COLORS, type Rarity, type Element } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
-import { useSparkBalance, useSparkCoins } from '@/hooks/useSparkBalance';
+import { useSpark } from '@/hooks/useSpark';
 import { useInventory } from '@/hooks/useInventory';
+import { useGameUser } from '@/hooks/useGameUser';
+import { api } from '@/lib/api-fetch';
+import { toPartObject, type InventoryResponse } from '@/lib/inventory-types';
 import { PageHeader, Section, Corners } from '@/components/design/atoms';
 import { useGuest } from '@/lib/guest';
 import { GuestEntry } from '@/components/shared/Guest';
-import { useAuthSig } from '@/lib/use-auth-sig';
 
 const PACK_COST = 100;
 
 function SparkInfoCard({
   sparkBalance,
-  address,
   isZh,
   t,
   onClaimed,
 }: {
   sparkBalance: string;
-  address: string;
   isZh: boolean;
   t: ReturnType<typeof useT>;
   onClaimed: () => void;
@@ -33,7 +31,6 @@ function SparkInfoCard({
   const enoughForOne = affordable >= 1;
   const need = enoughForOne ? 0 : PACK_COST - bal;
 
-  const getAuthSig = useAuthSig();
   const [claiming, setClaiming] = useState(false);
   const [claimMsg, setClaimMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -42,13 +39,8 @@ function SparkInfoCard({
     setClaiming(true);
     setClaimMsg(null);
     try {
-      const auth = await getAuthSig();
-      const res = await fetch('/api/faucet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(auth),
-      });
-      const data = await res.json();
+      const res = await api('/api/claim-starter', {});
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setClaimMsg({ ok: false, text: data.error || t.packs.starterClaimErr });
       } else {
@@ -60,7 +52,7 @@ function SparkInfoCard({
     } finally {
       setClaiming(false);
     }
-  }, [getAuthSig, claiming, t, onClaimed]);
+  }, [claiming, t, onClaimed]);
 
   return (
     <div
@@ -365,65 +357,79 @@ const RARITY_TEXT: Record<Rarity, string> = {
 
 type Phase = 'idle' | 'opening' | 'burst' | 'revealing' | 'done';
 
+// Map a part (objectId + Move fields) to a reveal card. `kind` comes from the
+// classified object type; fields carry the on-chain stats.
+function toRevealedCard(objectId: string, kind: string | null, fields: Record<string, unknown>): RevealedCard {
+  let type: RevealedCard['type'] = 'Blade';
+  if (kind === 'ratchet') type = 'Ratchet';
+  else if (kind === 'bit') type = 'Bit';
+
+  const rarity = (RARITY_LABELS[fields.rarity as number] ?? 'Common') as Rarity;
+  const spiritBeast = type === 'Blade' ? (fields.spirit_beast as number | undefined) : undefined;
+  const beast = spiritBeast !== undefined ? SPIRIT_BEASTS[spiritBeast] : undefined;
+
+  let name = '';
+  if (type === 'Blade') name = (fields.name as string) ?? 'Blade';
+  else if (type === 'Ratchet') name = `${fields.prongs}-${fields.height}`;
+  else name = (fields.name as string) ?? 'Bit';
+
+  return {
+    id: objectId,
+    name,
+    type,
+    rarity,
+    spiritBeast,
+    element: beast?.element,
+    attack: fields.attack as number,
+    prongs: fields.prongs as number,
+    height: fields.height as number,
+    friction: fields.friction as number,
+    gearDiameter: fields.gear_diameter as number,
+  };
+}
+
+// After a pack opens, hydrate the freshly-minted part ids into reveal cards by
+// reading the DB-backed inventory (which merges on-chain content/fields).
+async function hydrateRevealCards(partIds: string[]): Promise<RevealedCard[]> {
+  if (partIds.length === 0) return [];
+  let byId = new Map<string, RevealedCard>();
+  try {
+    const res = await api('/api/inventory');
+    if (res.ok) {
+      const data = (await res.json()) as InventoryResponse;
+      for (const item of data.items ?? []) {
+        const part = toPartObject(item);
+        if (!part) continue;
+        byId.set(part.objectId, toRevealedCard(part.objectId, part.type, part.fields));
+      }
+    }
+  } catch {
+    byId = new Map();
+  }
+  return partIds.map(
+    (id) => byId.get(id) ?? { id, name: 'New Part', type: 'Blade' as const, rarity: 'Common' as Rarity },
+  );
+}
+
 export default function PacksPage() {
-  const account = useCurrentAccount();
+  const { user } = useGameUser();
   const { isGuest } = useGuest();
-  const client = useSuiClient();
   const t = useT();
-  const { formatted: sparkBalance, refetch: refetchSpark } = useSparkBalance();
-  const { primaryCoinId, refetch: refetchCoins } = useSparkCoins();
+  const { formatted: sparkBalance, refetch: refetchSpark } = useSpark();
   const { refetch: refetchInventory } = useInventory();
-  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const [phase, setPhase] = useState<Phase>('idle');
   const [cards, setCards] = useState<RevealedCard[]>([]);
   const [revealIndex, setRevealIndex] = useState(-1);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchPartDetails = useCallback(async (partIds: string[]): Promise<RevealedCard[]> => {
-    const results: RevealedCard[] = [];
-    for (const id of partIds) {
-      try {
-        const obj = await client.getObject({ id, options: { showContent: true, showType: true } });
-        const objType = obj.data?.type ?? '';
-        const fields = (obj.data?.content as { fields?: Record<string, unknown> })?.fields ?? {};
-
-        let type: RevealedCard['type'] = 'Blade';
-        if (objType.includes('::ratchet::')) type = 'Ratchet';
-        else if (objType.includes('::bit::')) type = 'Bit';
-
-        const rarity = RARITY_LABELS[fields.rarity as number] ?? 'Common';
-        const spiritBeast = type === 'Blade' ? (fields.spirit_beast as number) : undefined;
-        const beast = spiritBeast !== undefined ? SPIRIT_BEASTS[spiritBeast] : undefined;
-
-        let name = '';
-        if (type === 'Blade') name = (fields.name as string) ?? 'Blade';
-        else if (type === 'Ratchet') name = `${fields.prongs}-${fields.height}`;
-        else name = (fields.name as string) ?? 'Bit';
-
-        results.push({
-          id,
-          name,
-          type,
-          rarity: rarity as Rarity,
-          spiritBeast,
-          element: beast?.element,
-          attack: fields.attack as number,
-          prongs: fields.prongs as number,
-          height: fields.height as number,
-          friction: fields.friction as number,
-          gearDiameter: fields.gear_diameter as number,
-        });
-      } catch {
-        results.push({ id, name: 'Mystery Part', type: 'Blade', rarity: 'Common' });
-      }
-    }
-    return results;
-  }, [client]);
-
   const handleOpenPack = useCallback(async () => {
     const isZh = t.nav.home === '首頁';
-    if (!account?.address) {
-      setError(isZh ? '請先連接錢包才能開卡包。' : 'Connect a wallet to open packs.');
+    if (!user) {
+      setError(isZh ? '請先登入才能開卡包。' : 'Sign in to open packs.');
+      return;
+    }
+    if (Number(sparkBalance) < PACK_COST) {
+      setError(isZh ? '你還沒有足夠的 SPARK,先去領取。' : 'Not enough SPARK — claim some first.');
       return;
     }
 
@@ -431,45 +437,26 @@ export default function PacksPage() {
     setCards([]);
     setRevealIndex(-1);
 
-    // 1. Real charge — the wallet signs a 100 SPARK transfer to the treasury.
-    if (!primaryCoinId) {
-      setError(isZh ? '你還沒有 SPARK,先去領取。' : 'No SPARK yet — claim some first.');
-      return;
-    }
-    let paymentDigest = '';
-    try {
-      const payTx = new Transaction();
-      const [pay] = payTx.splitCoins(payTx.object(primaryCoinId), [PACK_COST_MIST]);
-      payTx.transferObjects([pay], TREASURY_ADDRESS);
-      const signed = await signAndExecute({ transaction: payTx });
-      paymentDigest = signed.digest;
-    } catch {
-      setError(isZh ? '付款已取消。' : 'Payment cancelled.');
-      return;
-    }
-
-    // 2. Opening animation while the server mints the parts.
+    // Opening animation while the server reserves SPARK and mints the parts.
     setPhase('opening');
     await new Promise((r) => setTimeout(r, 1200));
     setPhase('burst');
     await new Promise((r) => setTimeout(r, 700));
 
     try {
-      const res = await fetch('/api/open-pack', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: account.address, paymentDigest }),
-      });
-      const data = await res.json();
+      // Session-authenticated: identity + SPARK charge are server-side. No wallet
+      // payment step — the DB ledger is debited via reserve/settle on the server.
+      const res = await api('/api/open-pack', {});
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(data.error);
+        setError(data.error ?? (isZh ? '開卡包失敗。' : 'Pack open failed.'));
         setPhase('idle');
         return;
       }
 
       await new Promise((r) => setTimeout(r, 500));
-      const details = await fetchPartDetails(data.partIds ?? []);
+      const details: RevealedCard[] = await hydrateRevealCards(data.partIds ?? []);
       setCards(details);
       setPhase('revealing');
 
@@ -481,15 +468,14 @@ export default function PacksPage() {
       await new Promise((r) => setTimeout(r, 400));
       setPhase('done');
       refetchSpark();
-      refetchCoins();
       refetchInventory();
     } catch {
       setError('Network error');
       setPhase('idle');
     }
-  }, [account, t, primaryCoinId, signAndExecute, fetchPartDetails, refetchSpark, refetchCoins, refetchInventory]);
+  }, [user, t, sparkBalance, refetchSpark, refetchInventory]);
 
-  if (!account && !isGuest) {
+  if (!user && !isGuest) {
     return (
       <>
         <PageHeader
@@ -572,10 +558,9 @@ export default function PacksPage() {
 
         {/* SPARK balance + education panel — only when not actively in a reveal */}
         {(phase === 'idle' || phase === 'opening' || phase === 'burst') && (
-          account ? (
+          user ? (
             <SparkInfoCard
               sparkBalance={sparkBalance}
-              address={account.address}
               isZh={isZh}
               t={t}
               onClaimed={() => {
@@ -591,8 +576,8 @@ export default function PacksPage() {
               </div>
               <p className="muted" style={{ fontSize: 14, lineHeight: 1.6, margin: '0 auto', maxWidth: 460 }}>
                 {isZh
-                  ? '每包 100 SPARK,開出 5 個隨機零件(刀刃 / 棘輪 / 軸尖)。連接錢包後可領取 SPARK 並開包。'
-                  : 'Each pack is 100 SPARK and yields 5 random parts (Blade / Ratchet / Bit). Connect a wallet to claim SPARK and open packs.'}
+                  ? '每包 100 SPARK,開出 5 個隨機零件(刀刃 / 棘輪 / 軸尖)。登入後可領取 SPARK 並開包。'
+                  : 'Each pack is 100 SPARK and yields 5 random parts (Blade / Ratchet / Bit). Sign in to claim SPARK and open packs.'}
               </p>
             </div>
           )

@@ -1,160 +1,284 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
-import { kvGet, kvSet } from '@/lib/kv';
-import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, rateLimited } from '@/lib/api-guard';
+import { sql } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { requireGameUser, type GameUser } from '@/lib/server-user';
+import { isSameOrigin, rateLimited, safeError } from '@/lib/api-guard';
 
-interface BattleRoom {
-  id: string;
-  creator: string;
+// Negotiated battle lobby, session-authenticated over Postgres. The actor is
+// ALWAYS the session user; their role (creator vs opponent) is derived from the
+// room row, never from a body 'player'/'submitter' field. Rotor selections and
+// the agreed outcome live in the room's `result` jsonb (the schema gives one
+// flexible column for room state); the persisted `status` uses the schema enum
+// (open|active|reporting|settled|cancelled) while the API reports the legacy
+// vocabulary (waiting|ready|in_progress|submitted|confirmed) the UI expects.
+
+const CODE_RE = /^[A-Z0-9]{4,16}$/;
+
+// Mutable room state we keep inside battle_rooms.result.
+interface RoomState {
   creatorRotor: string | null;
   creatorRotorName: string | null;
-  opponent: string | null;
   opponentRotor: string | null;
   opponentRotorName: string | null;
-  status: 'waiting' | 'ready' | 'in_progress' | 'submitted' | 'confirmed' | 'completed';
-  result: {
-    winner: string;
-    finishType: number;
-    scoreA: number;
-    scoreB: number;
-  } | null;
-  createdAt: number;
+  outcome: { winnerId: string; finishType: number; scoreA: number; scoreB: number } | null;
 }
 
-const ROOM_TTL = 60 * 60; // rooms live 1 hour
-const roomKey = (id: string) => `room:${id}`;
+interface RoomRow {
+  id: string;
+  code: string;
+  creator_id: string;
+  opponent_id: string | null;
+  status: string;
+  result: RoomState | null;
+  created_at: string;
+  [k: string]: unknown;
+}
 
-function generateId(): string {
-  // Cryptographically random room code (not Math.random, which is guessable).
+interface ResolvedRoom {
+  row: RoomRow;
+  creatorHandle: string;
+  opponentHandle: string | null;
+}
+
+function emptyState(): RoomState {
+  return {
+    creatorRotor: null,
+    creatorRotorName: null,
+    opponentRotor: null,
+    opponentRotorName: null,
+    outcome: null,
+  };
+}
+
+function generateCode(): string {
   return randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 }
 
-async function getRoom(id: string): Promise<BattleRoom | null> {
-  if (!id) return null;
-  return kvGet<BattleRoom>(roomKey(id));
+// Map the persisted schema status + state into the legacy status the UI reads.
+function legacyStatus(row: RoomRow, state: RoomState): string {
+  switch (row.status) {
+    case 'open':
+      return 'waiting';
+    case 'active':
+      return state.creatorRotor && state.opponentRotor ? 'in_progress' : 'ready';
+    case 'reporting':
+      return 'submitted';
+    case 'settled':
+      return 'confirmed';
+    case 'cancelled':
+      return 'cancelled';
+    default:
+      return row.status;
+  }
 }
 
-async function saveRoom(room: BattleRoom): Promise<void> {
-  await kvSet(roomKey(room.id), room, ROOM_TTL);
+// Shape a resolved room into the object the existing UI consumes. Identities are
+// handles; result.winner is the winner's handle.
+function shapeRoom(resolved: ResolvedRoom) {
+  const { row, creatorHandle, opponentHandle } = resolved;
+  const state = row.result ?? emptyState();
+  const winnerHandle = state.outcome
+    ? state.outcome.winnerId === row.creator_id
+      ? creatorHandle
+      : opponentHandle
+    : null;
+  return {
+    id: row.code,
+    creator: creatorHandle,
+    creatorRotor: state.creatorRotor,
+    creatorRotorName: state.creatorRotorName,
+    opponent: opponentHandle,
+    opponentRotor: state.opponentRotor,
+    opponentRotorName: state.opponentRotorName,
+    status: legacyStatus(row, state),
+    result: state.outcome
+      ? {
+          winner: winnerHandle ?? '',
+          finishType: state.outcome.finishType,
+          scoreA: state.outcome.scoreA,
+          scoreB: state.outcome.scoreB,
+        }
+      : null,
+    createdAt: new Date(row.created_at).getTime(),
+  };
 }
 
-// Lobby browse is not supported on serverless (no shared index); the UI joins by
-// code, so this just returns an empty list.
+async function handleFor(userId: string | null): Promise<string | null> {
+  if (!userId) return null;
+  const rows = await db.execute<{ handle: string }>(sql`
+    SELECT handle FROM profiles WHERE user_id = ${userId} LIMIT 1
+  `);
+  return rows[0]?.handle ?? null;
+}
+
+async function resolveRoom(code: string): Promise<ResolvedRoom | null> {
+  if (!CODE_RE.test(code)) return null;
+  const rows = await db.execute<RoomRow>(sql`
+    SELECT id, code, creator_id, opponent_id, status, result, created_at
+    FROM battle_rooms WHERE code = ${code} LIMIT 1
+  `);
+  const row = rows[0];
+  if (!row) return null;
+  const [creatorHandle, opponentHandle] = await Promise.all([
+    handleFor(row.creator_id),
+    handleFor(row.opponent_id),
+  ]);
+  return { row, creatorHandle: creatorHandle ?? '', opponentHandle };
+}
+
+async function persistState(roomId: string, status: string, state: RoomState): Promise<void> {
+  await db.execute(sql`
+    UPDATE battle_rooms
+    SET status = ${status}, result = ${JSON.stringify(state)}::jsonb,
+        version = version + 1, updated_at = now()
+    WHERE id = ${roomId}
+  `);
+}
+
+// Lobby browse is not supported (rooms are joined by code), so this is empty.
 export async function GET() {
   return NextResponse.json({ rooms: [] });
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
-  }
-  const limited = await rateLimited(request, 'battle-room', 120, 3600);
-  if (limited) return limited;
-
-  const body = await request.json();
-  const { action } = body;
-
-  // 'get' is a read; everything else mutates the room as a specific actor who
-  // must prove control of their address. (audit: battle-room tamper)
-  if (action !== 'get') {
-    const actor = body.creator ?? body.opponent ?? body.player ?? body.submitter ?? body.confirmer;
-    const auth = await verifyAuth(actor, body.authMessage, body.authSignature);
-    if (!auth.ok) {
-      return NextResponse.json({ error: auth.error }, { status: 401 });
+  try {
+    if (!isSameOrigin(request)) {
+      return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
     }
-  }
+    const limited = await rateLimited(request, 'battle-room', 120, 3600);
+    if (limited) return limited;
 
-  switch (action) {
-    case 'create': {
-      const { creator } = body;
-      if (!creator) return NextResponse.json({ error: 'Missing creator' }, { status: 400 });
-      const id = generateId();
-      const room: BattleRoom = {
-        id,
-        creator,
-        creatorRotor: null,
-        creatorRotorName: null,
-        opponent: null,
-        opponentRotor: null,
-        opponentRotorName: null,
-        status: 'waiting',
-        result: null,
-        createdAt: Date.now(),
-      };
-      await saveRoom(room);
-      return NextResponse.json({ success: true, roomId: id, room });
-    }
+    const guard = await requireGameUser(request.headers);
+    if ('error' in guard) return guard.error;
+    const me: GameUser = guard.user;
 
-    case 'join': {
-      const { roomId, opponent } = body;
-      const room = await getRoom(roomId);
-      if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-      if (room.status !== 'waiting') return NextResponse.json({ error: 'Room not available' }, { status: 400 });
-      if (room.creator === opponent) return NextResponse.json({ error: 'Cannot join your own room' }, { status: 400 });
-      room.opponent = opponent;
-      room.status = 'ready';
-      await saveRoom(room);
-      return NextResponse.json({ success: true, room });
-    }
+    const body = await request.json();
+    const action = body?.action;
 
-    case 'select-rotor': {
-      const { roomId, player, rotorId, rotorName } = body;
-      const room = await getRoom(roomId);
-      if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-      const nameStr = typeof rotorName === 'string' ? rotorName : null;
-      if (player === room.creator) {
-        room.creatorRotor = rotorId;
-        room.creatorRotorName = nameStr;
-      } else if (player === room.opponent) {
-        room.opponentRotor = rotorId;
-        room.opponentRotorName = nameStr;
-      } else {
-        return NextResponse.json({ error: 'Not a participant' }, { status: 400 });
+    switch (action) {
+      case 'create': {
+        const code = generateCode();
+        const rows = await db.execute<{ id: string; created_at: string }>(sql`
+          INSERT INTO battle_rooms (code, creator_id, status, result)
+          VALUES (${code}, ${me.id}, 'open', ${JSON.stringify(emptyState())}::jsonb)
+          RETURNING id, created_at
+        `);
+        const resolved: ResolvedRoom = {
+          row: {
+            id: rows[0].id,
+            code,
+            creator_id: me.id,
+            opponent_id: null,
+            status: 'open',
+            result: emptyState(),
+            created_at: rows[0].created_at,
+          },
+          creatorHandle: me.handle,
+          opponentHandle: null,
+        };
+        const room = shapeRoom(resolved);
+        return NextResponse.json({ success: true, roomId: code, room });
       }
 
-      if (room.creatorRotor && room.opponentRotor) room.status = 'in_progress';
-      await saveRoom(room);
-      return NextResponse.json({ success: true, room });
-    }
-
-    case 'submit-result': {
-      const { roomId, submitter, winner, finishType, scoreA, scoreB } = body;
-      const room = await getRoom(roomId);
-      if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-      if (submitter !== room.creator && submitter !== room.opponent) {
-        return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+      case 'join': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row } = resolved;
+        if (row.creator_id === me.id) {
+          return NextResponse.json({ error: 'Cannot join your own room' }, { status: 400 });
+        }
+        // Open and unclaimed -> claim it. Allow re-join by the invited opponent.
+        if (row.status !== 'open' || (row.opponent_id && row.opponent_id !== me.id)) {
+          return NextResponse.json({ error: 'Room not available' }, { status: 400 });
+        }
+        await db.execute(sql`
+          UPDATE battle_rooms
+          SET opponent_id = ${me.id}, status = 'active', version = version + 1, updated_at = now()
+          WHERE id = ${row.id} AND status = 'open'
+        `);
+        const fresh = await resolveRoom(body.roomId);
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
       }
-      if (winner !== room.creator && winner !== room.opponent) {
-        return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
+
+      case 'select-rotor': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row } = resolved;
+        const isCreator = row.creator_id === me.id;
+        const isOpponent = row.opponent_id === me.id;
+        if (!isCreator && !isOpponent) {
+          return NextResponse.json({ error: 'Not a participant' }, { status: 400 });
+        }
+        const rotorId = typeof body.rotorId === 'string' ? body.rotorId : null;
+        const rotorName = typeof body.rotorName === 'string' ? body.rotorName : null;
+        const state = { ...(row.result ?? emptyState()) };
+        if (isCreator) {
+          state.creatorRotor = rotorId;
+          state.creatorRotorName = rotorName;
+        } else {
+          state.opponentRotor = rotorId;
+          state.opponentRotorName = rotorName;
+        }
+        // Both sides chosen -> stays 'active' but legacyStatus reports in_progress.
+        await persistState(row.id, 'active', state);
+        const fresh = await resolveRoom(body.roomId);
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
       }
-      room.result = { winner, finishType, scoreA, scoreB };
-      room.status = 'submitted';
-      await saveRoom(room);
-      return NextResponse.json({ success: true, room });
-    }
 
-    case 'confirm-result': {
-      const { roomId, confirmer } = body;
-      const room = await getRoom(roomId);
-      if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-      if (confirmer !== room.creator && confirmer !== room.opponent) {
-        return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+      case 'submit-result': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row, creatorHandle, opponentHandle } = resolved;
+        if (row.creator_id !== me.id && row.opponent_id !== me.id) {
+          return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+        }
+        // winner is a participant handle; resolve it back to a user id.
+        const winnerHandle = typeof body.winner === 'string' ? body.winner : '';
+        let winnerId: string | null = null;
+        if (winnerHandle === creatorHandle) winnerId = row.creator_id;
+        else if (opponentHandle && winnerHandle === opponentHandle) winnerId = row.opponent_id;
+        if (!winnerId) {
+          return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
+        }
+        const state = { ...(row.result ?? emptyState()) };
+        state.outcome = {
+          winnerId,
+          finishType: Number(body.finishType) || 0,
+          scoreA: Number(body.scoreA) || 0,
+          scoreB: Number(body.scoreB) || 0,
+        };
+        await persistState(row.id, 'reporting', state);
+        const fresh = await resolveRoom(body.roomId);
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
       }
-      if (!room.result) return NextResponse.json({ error: 'No result to confirm' }, { status: 400 });
-      room.status = 'confirmed';
-      await saveRoom(room);
-      return NextResponse.json({ success: true, room });
-    }
 
-    case 'get': {
-      const { roomId } = body;
-      const room = await getRoom(roomId);
-      if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-      return NextResponse.json({ room });
-    }
+      case 'confirm-result': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row } = resolved;
+        if (row.creator_id !== me.id && row.opponent_id !== me.id) {
+          return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+        }
+        const state = row.result ?? emptyState();
+        if (!state.outcome) {
+          return NextResponse.json({ error: 'No result to confirm' }, { status: 400 });
+        }
+        await persistState(row.id, 'settled', state);
+        const fresh = await resolveRoom(body.roomId);
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+      }
 
-    default:
-      return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+      case 'get': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        return NextResponse.json({ room: shapeRoom(resolved) });
+      }
+
+      default:
+        return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+    }
+  } catch (err) {
+    return safeError(err, 'Battle room action failed');
   }
 }

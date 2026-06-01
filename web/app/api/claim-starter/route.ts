@@ -1,123 +1,48 @@
+// Starter grant: a one-time off-chain $SPARK bonus for a new account, gated by the
+// `entitlements` unique (user_id, kind) index. Identity is the Better Auth session
+// only. Per the web2-hybrid design this does NOT mint anything on-chain — starter
+// inventory (if any) is provisioned elsewhere; here we only credit the DB ledger.
+
 import { NextRequest, NextResponse } from 'next/server';
-import { Transaction } from '@mysten/sui/transactions';
-import { verifyAuth } from '@/lib/auth-verify';
-import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded, belowMinSuiBalance } from '@/lib/api-guard';
-import { loadSigner } from '@/lib/admin-signer';
-import { kvSetNX, kvDel } from '@/lib/kv';
+import { sql } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { requireGameUser } from '@/lib/server-user';
+import { grantSpark, getBalance } from '@/lib/economy';
+import { safeError } from '@/lib/api-guard';
 
-const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
-const ORIG_PKG = '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
-const SPARK_CAP = '0x095b18a88100dc11f9f1ec3047adf5ac0e497e03d1f7e3b5f50fc2dad9569e69';
-const SUI_RANDOM = '0x8';
-const RPC = 'https://fullnode.testnet.sui.io:443';
-const CLAIM_KEY = (addr: string) => `starter_claimed:${addr}`;
-
-async function rpc(method: string, params: unknown[]) {
-  const res = await fetch(RPC, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  });
-  return res.json();
-}
+const STARTER_KIND = 'starter';
+const STARTER_SPARK = 500;
+const STARTER_REASON = 'starter_claim';
 
 export async function POST(request: NextRequest) {
   try {
-    if (!isSameOrigin(request)) {
-      return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
-    }
-    const limited = await rateLimited(request, 'claim-starter', 10, 3600);
-    if (limited) return limited;
-    // H-RT-2: global hourly ceiling on free-SPARK grants (faucet + starter share it).
-    const overBudget = await adminBudgetExceeded('spark-grant', 300, 3600);
-    if (overBudget) return overBudget;
-    const { address, authMessage, authSignature } = await request.json();
-    if (!address) return NextResponse.json({ error: 'Missing address' }, { status: 400 });
-    const auth = await verifyAuth(address, authMessage, authSignature);
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
-    // H-RT-2: require a funded wallet so free throwaway keypairs can't farm.
-    const underfunded = await belowMinSuiBalance(address, RPC);
-    if (underfunded) return underfunded;
-    // H-5: atomic one-per-address; released below on failure.
-    const firstClaim = await kvSetNX(CLAIM_KEY(address), 60 * 60 * 24 * 365);
-    if (!firstClaim) {
-      return NextResponse.json({ error: 'Already claimed starter pack.' }, { status: 400 });
+    const auth = await requireGameUser(request.headers);
+    if ('error' in auth) return auth.error;
+    const { id } = auth.user;
+
+    // Entitlement is the authoritative one-time gate; only the winning INSERT grants.
+    const claimed = await db.execute<{ user_id: string }>(sql`
+      INSERT INTO entitlements (user_id, kind)
+      VALUES (${id}, ${STARTER_KIND})
+      ON CONFLICT (user_id, kind) DO NOTHING
+      RETURNING user_id
+    `);
+
+    if (!claimed[0]) {
+      return NextResponse.json(
+        { error: 'Already claimed starter pack.' },
+        { status: 400 },
+      );
     }
 
-    // H-RT-3: minter role (SPARK TreasuryCap) once keys are split.
-    const { keypair, address: admin } = loadSigner('minter');
-
-    const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
-    const client = new SuiJsonRpcClient({ url: RPC, network: 'testnet' });
-
-    // Step 1: Mint 500 SPARK
-    const tx1 = new Transaction();
-    tx1.setSender(admin);
-    tx1.moveCall({
-      target: `${PKG}::spark_token::mint`,
-      arguments: [
-        tx1.object(SPARK_CAP),
-        tx1.pure.u64(500_000_000_000n),
-        tx1.pure.address(address),
-      ],
-    });
-    const bytes1 = await tx1.build({ client });
-    const sig1 = await keypair.signTransaction(bytes1);
-    await rpc('sui_executeTransactionBlock', [
-      Buffer.from(bytes1).toString('base64'), [sig1.signature],
-      { showEffects: true }, 'WaitForLocalExecution',
-    ]);
-
-    // Step 2: Open a free pack (admin pays, transfer parts to user)
-    const adminCoins = await rpc('suix_getCoins', [admin, `${ORIG_PKG}::spark_token::SPARK_TOKEN`, null, 1]);
-    const adminCoin = adminCoins.result?.data?.[0]?.coinObjectId;
-    if (!adminCoin) {
-      await kvDel(CLAIM_KEY(address));
-      return NextResponse.json({ error: 'Admin has no SPARK' }, { status: 500 });
-    }
-
-    const tx2 = new Transaction();
-    tx2.setSender(admin);
-    const [payment] = tx2.splitCoins(tx2.object(adminCoin), [100_000_000_000n]);
-    tx2.moveCall({
-      target: `${PKG}::pack::open_pack`,
-      arguments: [payment, tx2.object(SPARK_CAP), tx2.object(SUI_RANDOM)],
-    });
-    const bytes2 = await tx2.build({ client });
-    const sig2 = await keypair.signTransaction(bytes2);
-    const packResult = await rpc('sui_executeTransactionBlock', [
-      Buffer.from(bytes2).toString('base64'), [sig2.signature],
-      { showEffects: true, showObjectChanges: true }, 'WaitForLocalExecution',
-    ]);
-
-    // Transfer created parts to user
-    const partIds: string[] = [];
-    for (const c of packResult.result?.objectChanges ?? []) {
-      if (c.type === 'created' && (c.objectType?.includes('::blade::') || c.objectType?.includes('::ratchet::') || c.objectType?.includes('::bit::'))) {
-        partIds.push(c.objectId);
-      }
-    }
-
-    if (partIds.length > 0) {
-      const tx3 = new Transaction();
-      tx3.setSender(admin);
-      for (const id of partIds) {
-        tx3.transferObjects([tx3.object(id)], address);
-      }
-      const bytes3 = await tx3.build({ client });
-      const sig3 = await keypair.signTransaction(bytes3);
-      await rpc('sui_executeTransactionBlock', [
-        Buffer.from(bytes3).toString('base64'), [sig3.signature],
-        { showEffects: true }, 'WaitForLocalExecution',
-      ]);
-    }
+    await grantSpark(id, STARTER_SPARK, STARTER_REASON);
+    const balance = await getBalance(id);
 
     return NextResponse.json({
       success: true,
-      spark: 500,
-      parts: partIds.length,
-      partIds,
-      message: `Starter pack claimed! 500 SPARK + ${partIds.length} parts.`,
+      spark: STARTER_SPARK,
+      balance,
+      message: `Starter pack claimed! ${STARTER_SPARK} SPARK added.`,
     });
   } catch (err) {
     return safeError(err, 'Starter claim failed');

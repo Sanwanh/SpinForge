@@ -610,8 +610,8 @@ export default function HomePage() {
     </>
   ) : (
     <>
-      <Link href="/passport" className="btn btn-primary">
-        Claim Spin Passport →
+      <Link href="/login" className="btn btn-primary">
+        Enter the Forge →
       </Link>
       <Link href="/tournament" className="btn btn-ghost">
         Watch Battle Demo

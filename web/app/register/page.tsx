@@ -2,10 +2,10 @@
 
 import * as React from 'react';
 import { useState, useCallback } from 'react';
-import { useCurrentAccount } from '@mysten/dapp-kit';
 import { PageHeader, Section, Tag, Corners } from '@/components/design/atoms';
 import { useT } from '@/lib/i18n';
-import { useAuthSig } from '@/lib/use-auth-sig';
+import { useGameUser } from '@/hooks/useGameUser';
+import { api } from '@/lib/api-fetch';
 
 const REAL_BLADES = [
   'Wizard Rod', 'Phoenix Wing', 'Dran Sword', 'Shark Edge',
@@ -237,8 +237,7 @@ function SectionEyebrow({
 }
 
 export default function RegisterPage() {
-  const account = useCurrentAccount();
-  const getAuthSig = useAuthSig();
+  const { user } = useGameUser();
   const t = useT();
   const isZh = t.nav.home === '首頁';
 
@@ -256,44 +255,38 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
 
   const handleRegister = useCallback(async () => {
-    if (!account?.address || !blade) return;
+    if (!user || !blade) return;
     setStatus('registering');
     setError('');
 
     try {
-      const auth = await getAuthSig();
-      const res = await fetch('/api/register-rotor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...auth,
-          bladeName: blade,
-          spiritBeast: spirit,
-          beyType,
-          spinDirection: spin,
-          ratchetProng: prong,
-          ratchetHeight: height,
-          bitName: bit,
-          bitCategory: bitCat,
-        }),
+      const res = await api('/api/register-rotor', {
+        bladeName: blade,
+        spiritBeast: spirit,
+        beyType,
+        spinDirection: spin,
+        ratchetProng: prong,
+        ratchetHeight: height,
+        bitName: bit,
+        bitCategory: bitCat,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? 'Failed');
 
-      setResult({ beyId: data.beyId, name: data.name, digest: data.digest });
+      setResult({ beyId: data.beyId, name: data.name, digest: data.digest ?? '' });
       setStatus('done');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
       setStatus('error');
     }
-  }, [account, getAuthSig, blade, spirit, beyType, spin, prong, height, bit, bitCat]);
+  }, [user, blade, spirit, beyType, spin, prong, height, bit, bitCat]);
 
   // ─── Empty state ───
-  if (!account) {
+  if (!user) {
     return (
       <PageHeader
         eyebrow={isZh ? '註冊陀螺 · REGISTER ROTOR' : 'REGISTER ROTOR · 註冊陀螺'}
-        title={<>{isZh ? '連接錢包以註冊你的陀螺' : 'Connect wallet to register your top'}</>}
+        title={<>{isZh ? '登入以註冊你的陀螺' : 'Sign in to register your top'}</>}
         sub={isZh ? '把你手上的實體陀螺鑄到 Sui 鏈上。' : 'Mint your physical Beyblade to Sui.'}
         kanjiBg="鑄"
       />
@@ -327,9 +320,11 @@ export default function RegisterPage() {
               <div className="t-mono" style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12 }}>
                 {isZh ? '物件 ID' : 'Object ID'}: {result.beyId.slice(0, 12)}…{result.beyId.slice(-6)}
               </div>
-              <div className="t-mono" style={{ fontSize: 10, color: 'var(--gold)', marginBottom: 24 }}>
-                {isZh ? '交易' : 'TX'}: {result.digest.slice(0, 16)}…
-              </div>
+              {result.digest && (
+                <div className="t-mono" style={{ fontSize: 10, color: 'var(--gold)', marginBottom: 24 }}>
+                  {isZh ? '交易' : 'TX'}: {result.digest.slice(0, 16)}…
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <a href="/passport" className="btn btn-primary">
                   {isZh ? '查看護照' : 'View Passport'}

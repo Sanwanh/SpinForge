@@ -1,23 +1,86 @@
+// Submit a battle result — web2-hybrid flow (plan section E, submit-result).
+// Both participants are session-authenticated; each posts the result for their
+// shared room. We resolve the two players + their Beys from `battle_rooms` /
+// `ownership`, compute a canonical result hash, and record one confirmation per
+// user. Only when BOTH confirmations agree on the same hash do we relay a single
+// `battle_record::create_committed` (already-committed) record into platform
+// custody, insert the `battles` row + record-attribution ownership, and update
+// the leaderboard. Identity is the session user — never the request body.
+
+import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { Transaction } from '@mysten/sui/transactions';
-import { verifyAuth } from '@/lib/auth-verify';
+import { sql } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { requireGameUser, chainSubjectFor } from '@/lib/server-user';
+import { reserveOp, markOp } from '@/lib/chain-ops';
+import { assertOwns } from '@/lib/ownership';
+import { submitRelay, PLATFORM_CUSTODY } from '@/lib/relay';
 import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded } from '@/lib/api-guard';
-import { loadSigner } from '@/lib/admin-signer';
+import { PACKAGE_ID, ADMIN_CAP_ID } from '@/lib/constants';
 
-const PKG = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
-// H-4: battle_record::create is now &AdminCap-gated so only the backend can mint
-// records (the participant check already happened above via wallet signature).
-const ADMIN_CAP = '0xe6f16e912dbd2a9ee58bc8207648e9225dfe00d95e4888ddcafa1b8239383090';
-const RPC = 'https://fullnode.testnet.sui.io:443';
+const RESULT_REASON = 'submit_result';
 const SUI_CLOCK = '0x6';
+const DEFAULT_SEASON = 'S1';
 
-async function rpc(method: string, params: unknown[]) {
-  const res = await fetch(RPC, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+interface Result {
+  roomId: string;
+  winnerId: string;
+  finishType: number;
+  scoreA: number;
+  scoreB: number;
+  rotorA: string;
+  rotorB: string;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function boundedInt(v: unknown, min: number, max: number): boolean {
+  return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
+}
+
+// Validate the reported result at the boundary; identity is NOT from the body.
+function parseResult(body: unknown): Result | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  const str = (v: unknown) => typeof v === 'string' && v.length > 0;
+  if (typeof b.roomId !== 'string' || !UUID_RE.test(b.roomId)) return null;
+  if (!str(b.winnerId) || !str(b.rotorA) || !str(b.rotorB)) return null;
+  if (!boundedInt(b.finishType, 0, 3) || !boundedInt(b.scoreA, 0, 15) || !boundedInt(b.scoreB, 0, 15)) {
+    return null;
+  }
+  return {
+    roomId: b.roomId,
+    winnerId: b.winnerId as string,
+    finishType: b.finishType as number,
+    scoreA: b.scoreA as number,
+    scoreB: b.scoreB as number,
+    rotorA: b.rotorA as string,
+    rotorB: b.rotorB as string,
+  };
+}
+
+type RoomRow = {
+  id: string;
+  creator_id: string;
+  opponent_id: string | null;
+  status: string;
+};
+
+// Deterministic hash over the canonical (playerA-ordered) result so both
+// participants' submissions must agree byte-for-byte to commit.
+function resultHash(playerAId: string, playerBId: string, r: Result): string {
+  const canonical = JSON.stringify({
+    roomId: r.roomId,
+    playerAId,
+    playerBId,
+    winnerId: r.winnerId,
+    finishType: r.finishType,
+    scoreA: r.scoreA,
+    scoreB: r.scoreB,
+    rotorA: r.rotorA,
+    rotorB: r.rotorB,
   });
-  return res.json();
+  return createHash('sha256').update(canonical).digest('hex');
 }
 
 export async function POST(request: NextRequest) {
@@ -27,89 +90,203 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'submit-result', 30, 3600);
     if (limited) return limited;
-    // H-RT-2: cap total admin-signed record mints per hour as a circuit breaker.
     const overBudget = await adminBudgetExceeded('submit-result', 600, 3600);
     if (overBudget) return overBudget;
-    const { playerA, playerB, rotorA, rotorB, winner, finishType, scoreA, scoreB, submitter, authMessage, authSignature } = await request.json();
 
-    if (!playerA || !playerB || !rotorA || !rotorB || !winner) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    const auth = await requireGameUser(request.headers);
+    if ('error' in auth) return auth.error;
+    const { user } = auth;
+
+    const result = parseResult(await request.json());
+    if (!result) {
+      return NextResponse.json({ error: 'Invalid result' }, { status: 400 });
     }
 
-    // C-2/H-10: the submitter must prove control of their address AND be one of
-    // the two participants — you cannot file a result for a match you're not in.
-    const auth = await verifyAuth(submitter, authMessage, authSignature);
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
-    if (submitter !== playerA && submitter !== playerB) {
-      return NextResponse.json({ error: 'Submitter is not a participant' }, { status: 403 });
+    // 1. Resolve the room + its two participants (server-trusted, not from body).
+    const rooms = await db.execute<RoomRow>(sql`
+      SELECT id, creator_id, opponent_id, status FROM battle_rooms WHERE id = ${result.roomId} LIMIT 1
+    `);
+    const room = rooms[0];
+    if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+    if (!room.opponent_id) {
+      return NextResponse.json({ error: 'Room has no opponent yet' }, { status: 409 });
+    }
+    if (room.status === 'settled' || room.status === 'cancelled') {
+      return NextResponse.json({ error: 'Room is already closed' }, { status: 409 });
     }
 
-    // L-5: winner must be one of the two players; scores bounded to a sane range.
-    if (winner !== playerA && winner !== playerB) {
+    const playerAId = room.creator_id;
+    const playerBId = room.opponent_id;
+
+    // 2. The reporter must be one of the two participants.
+    if (user.id !== playerAId && user.id !== playerBId) {
+      return NextResponse.json({ error: 'You are not a participant in this match' }, { status: 403 });
+    }
+    if (result.winnerId !== playerAId && result.winnerId !== playerBId) {
       return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
     }
-    const sA = Number(scoreA ?? 7);
-    const sB = Number(scoreB ?? 0);
-    const ft = Number(finishType ?? 0);
-    if (![sA, sB].every((s) => Number.isInteger(s) && s >= 0 && s <= 15) || !Number.isInteger(ft) || ft < 0 || ft > 3) {
-      return NextResponse.json({ error: 'Invalid scores or finish type' }, { status: 400 });
+
+    // 3. Verify each reported Bey is owned by the matching player.
+    const ownsA = await assertOwns(playerAId, [result.rotorA]);
+    const ownsB = await assertOwns(playerBId, [result.rotorB]);
+    if (!ownsA || !ownsB) {
+      return NextResponse.json({ error: 'A reported Bey is not owned by its player' }, { status: 400 });
     }
 
-    // H-RT-3: recorder role holds only the AdminCap once keys are split.
-    const { keypair, address: admin } = loadSigner('recorder');
+    // 4. Record this user's confirmation of the canonical hash.
+    const hash = resultHash(playerAId, playerBId, result);
+    await db.execute(sql`
+      INSERT INTO battle_confirmations (room_id, user_id, result_hash)
+      VALUES (${result.roomId}, ${user.id}, ${hash})
+      ON CONFLICT (room_id, user_id)
+      DO UPDATE SET result_hash = ${hash}, created_at = now()
+    `);
 
-    const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
-    const client = new SuiJsonRpcClient({ url: RPC, network: 'testnet' });
+    // 5. Both participants must have confirmed the SAME hash to commit on-chain.
+    const confirmations = await db.execute<{ user_id: string; result_hash: string }>(sql`
+      SELECT user_id, result_hash FROM battle_confirmations WHERE room_id = ${result.roomId}
+    `);
+    const byA = confirmations.find((c) => c.user_id === playerAId);
+    const byB = confirmations.find((c) => c.user_id === playerBId);
+    const bothAgree = !!byA && !!byB && byA.result_hash === hash && byB.result_hash === hash;
+    if (!bothAgree) {
+      return NextResponse.json({
+        success: true,
+        committed: false,
+        message: 'Result recorded. Waiting for your opponent to confirm.',
+      });
+    }
 
-    const tx = new Transaction();
-    tx.setSender(admin);
-
-    const [record] = tx.moveCall({
-      target: `${PKG}::battle_record::create`,
-      arguments: [
-        tx.object(ADMIN_CAP),
-        tx.pure.address(playerA),
-        tx.pure.address(playerB),
-        tx.pure.id(rotorA),
-        tx.pure.id(rotorB),
-        tx.pure.address(winner),
-        tx.pure.u8(ft),
-        tx.pure.u8(sA),
-        tx.pure.u8(sB),
-        tx.object(SUI_CLOCK),
-      ],
+    // 6. Both agree — idempotently relay ONE committed record.
+    const operationId = await reserveOp({
+      idempotencyKey: `submit-result:${result.roomId}:${hash}`,
+      userId: user.id,
+      action: RESULT_REASON,
+      request: { ...result, playerAId, playerBId },
     });
 
-    tx.transferObjects([record], admin);
-
-    const bytes = await tx.build({ client });
-    const { signature } = await keypair.signTransaction(bytes);
-
-    const result = await rpc('sui_executeTransactionBlock', [
-      Buffer.from(bytes).toString('base64'),
-      [signature],
-      { showEffects: true, showObjectChanges: true },
-      'WaitForLocalExecution',
-    ]);
-
-    if (result.error) {
-      return NextResponse.json({ error: result.error.message }, { status: 500 });
+    // If this room already settled (concurrent confirm won the race), short-circuit.
+    const settled = await db.execute<{ id: string; chain_record_id: string | null; tx_digest: string | null }>(sql`
+      SELECT id, chain_record_id, tx_digest FROM battles WHERE room_id = ${result.roomId} LIMIT 1
+    `);
+    if (settled[0]) {
+      return NextResponse.json({
+        success: true,
+        committed: true,
+        recordId: settled[0].chain_record_id,
+        digest: settled[0].tx_digest,
+        message: 'Battle already committed on-chain.',
+      });
     }
 
-    let recordId = '';
-    for (const c of result.result?.objectChanges ?? []) {
-      if (c.type === 'created' && c.objectType?.includes('battle_record::BattleRecord')) {
-        recordId = c.objectId;
-      }
+    const subjectA = chainSubjectFor(playerAId);
+    const subjectB = chainSubjectFor(playerBId);
+    const winnerSubject = chainSubjectFor(result.winnerId);
+
+    let relay;
+    try {
+      relay = await submitRelay('recorder', (tx) => {
+        const [record] = tx.moveCall({
+          target: `${PACKAGE_ID}::battle_record::create_committed`,
+          arguments: [
+            tx.object(ADMIN_CAP_ID),
+            tx.pure.address(subjectA),
+            tx.pure.address(subjectB),
+            tx.pure.id(result.rotorA),
+            tx.pure.id(result.rotorB),
+            tx.pure.address(winnerSubject),
+            tx.pure.u8(result.finishType),
+            tx.pure.u8(result.scoreA),
+            tx.pure.u8(result.scoreB),
+            tx.pure.vector('u8', Array.from(Buffer.from(operationId))),
+            tx.object(SUI_CLOCK),
+          ],
+        });
+        // create_committed returns the record; transfer it to platform custody.
+        tx.transferObjects([record], PLATFORM_CUSTODY);
+      });
+    } catch (err) {
+      await markOp(operationId, {
+        state: 'reconcile_needed',
+        lastError: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     }
 
-    return NextResponse.json({
-      success: true,
-      recordId,
-      digest: result.result?.digest,
-      message: 'Battle record created on-chain.',
+    const created = relay.created.find((c) => c.objectType.includes('battle_record::BattleRecord'));
+    const recordId = created?.objectId ?? null;
+
+    // 7. Persist the settled battle, attribution ownership, leaderboard, room state.
+    await db.transaction(async (dbtx) => {
+      await dbtx.execute(sql`
+        INSERT INTO battles (
+          room_id, player_a_id, player_b_id, winner_id,
+          finish_type, score_a, score_b, season,
+          chain_record_id, tx_digest, chain_status, operation_id
+        )
+        VALUES (
+          ${result.roomId}, ${playerAId}, ${playerBId}, ${result.winnerId},
+          ${result.finishType}, ${result.scoreA}, ${result.scoreB}, ${DEFAULT_SEASON},
+          ${recordId}, ${relay.digest}, 'committed', ${operationId}
+        )
+        ON CONFLICT (chain_record_id) DO NOTHING
+      `);
+      await dbtx.execute(sql`
+        UPDATE battle_rooms
+        SET status = 'settled', version = version + 1, updated_at = now()
+        WHERE id = ${result.roomId}
+      `);
+      await dbtx.execute(leaderboardUpsert(DEFAULT_SEASON, playerAId, result.winnerId === playerAId, result));
+      await dbtx.execute(leaderboardUpsert(DEFAULT_SEASON, playerBId, result.winnerId === playerBId, result));
     });
+
+    // 8. Attribution row for the on-chain record (kind=record_attribution).
+    if (recordId) {
+      await db.execute(sql`
+        INSERT INTO ownership (
+          user_id, object_id, object_type, kind, status,
+          chain_owner_address, acquired_via, tx_digest, operation_id
+        )
+        VALUES (
+          ${result.winnerId}, ${recordId}, 'battle_record', 'record_attribution', 'active',
+          ${PLATFORM_CUSTODY}, ${RESULT_REASON}, ${relay.digest}, ${operationId}
+        )
+        ON CONFLICT (object_id) DO NOTHING
+      `);
+    }
+    await markOp(operationId, { state: 'db_applied', txDigest: relay.digest });
+
+    return NextResponse.json(
+      {
+        success: true,
+        committed: true,
+        operationId,
+        recordId,
+        digest: relay.digest,
+        message: 'Battle committed on-chain.',
+      },
+      { status: 202 },
+    );
   } catch (err) {
     return safeError(err, 'Result submission failed');
   }
+}
+
+// XTREME finish (type 3) increments the xtreme tally; winner +1 win / loser +1 loss.
+function leaderboardUpsert(season: string, userId: string, isWinner: boolean, result: Result) {
+  const winInc = isWinner ? 1 : 0;
+  const lossInc = isWinner ? 0 : 1;
+  const eloDelta = isWinner ? 16 : -16;
+  const xtremeInc = isWinner && result.finishType === 3 ? 1 : 0;
+  return sql`
+    INSERT INTO leaderboard_entries (season, user_id, elo, wins, losses, xtreme_finishes, updated_at)
+    VALUES (${season}, ${userId}, ${1000 + eloDelta}, ${winInc}, ${lossInc}, ${xtremeInc}, now())
+    ON CONFLICT (season, user_id)
+    DO UPDATE SET
+      elo = leaderboard_entries.elo + ${eloDelta},
+      wins = leaderboard_entries.wins + ${winInc},
+      losses = leaderboard_entries.losses + ${lossInc},
+      xtreme_finishes = leaderboard_entries.xtreme_finishes + ${xtremeInc},
+      updated_at = now()
+  `;
 }

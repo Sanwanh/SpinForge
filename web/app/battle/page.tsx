@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useCurrentAccount, useSuiClientQuery } from '@mysten/dapp-kit';
+import { useSuiClientQuery } from '@mysten/dapp-kit';
 import { useInventory } from '@/hooks/useInventory';
-import { PageHeader, Section, Tag, Corners, Stat } from '@/components/design/atoms';
+import { useGameUser } from '@/hooks/useGameUser';
+import { api } from '@/lib/api-fetch';
+import { PageHeader, Section, Tag, Corners } from '@/components/design/atoms';
 import {
   BeyCard,
   type BeyCardData,
@@ -12,7 +14,6 @@ import {
 } from '@/components/design/BeyCard';
 import { useT } from '@/lib/i18n';
 import { QRCodeSVG } from 'qrcode.react';
-import { useAuthSig, useCachedAuthSig } from '@/lib/use-auth-sig';
 
 type Phase = 'create' | 'waiting' | 'select' | 'battle' | 'submit' | 'confirmed' | 'done';
 
@@ -47,9 +48,8 @@ const FINISH_LABELS: Record<number, string> = {
 };
 
 export default function BattlePage() {
-  const account = useCurrentAccount();
-  const getAuthSig = useAuthSig();
-  const getCachedAuth = useCachedAuthSig();
+  const { user, isPending } = useGameUser();
+  const myId = user?.id ?? null;
   const { beys } = useInventory();
   const t = useT();
   const isZh = t.nav.home === '首頁';
@@ -78,34 +78,26 @@ export default function BattlePage() {
   const [onChainId, setOnChainId] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const api = useCallback(async (body: Record<string, unknown>) => {
-    // Mutating room actions must carry a wallet signature; 'get' is a read.
-    let payload = body;
-    if (body.action && body.action !== 'get') {
-      const auth = await getCachedAuth();
-      payload = { ...body, ...auth };
-    }
-    const res = await fetch('/api/battle-room', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+  // Room actions go through the session-authenticated API. Identity comes from
+  // the session cookie, so we never send creator/opponent/player/submitter.
+  const roomApi = useCallback(async (body: Record<string, unknown>) => {
+    const res = await api('/api/battle-room', body);
     return res.json();
-  }, [getCachedAuth]);
+  }, []);
 
   const handleCreate = useCallback(async () => {
-    if (!account) return;
-    const data = await api({ action: 'create', creator: account.address });
+    if (!myId) return;
+    const data = await roomApi({ action: 'create' });
     if (data.roomId) {
       setRoomId(data.roomId);
       setRoom(data.room);
       setPhase('waiting');
     }
-  }, [account, api]);
+  }, [myId, roomApi]);
 
   const handleJoin = useCallback(async () => {
-    if (!account || !joinCode) return;
-    const data = await api({ action: 'join', roomId: joinCode, opponent: account.address });
+    if (!myId || !joinCode) return;
+    const data = await roomApi({ action: 'join', roomId: joinCode });
     if (data.success) {
       setRoomId(joinCode);
       setRoom(data.room);
@@ -113,16 +105,15 @@ export default function BattlePage() {
     } else {
       setError(data.error);
     }
-  }, [account, joinCode, api]);
+  }, [myId, joinCode, roomApi]);
 
   const handleSelectRotor = useCallback(async () => {
-    if (!account || !selectedRotor) return;
+    if (!myId || !selectedRotor) return;
     const selectedBey = beys.find((b) => b.objectId === selectedRotor);
     const rotorName = selectedBey ? String(selectedBey.fields.name ?? 'Rotor') : 'Rotor';
-    const data = await api({
+    const data = await roomApi({
       action: 'select-rotor',
       roomId,
-      player: account.address,
       rotorId: selectedRotor,
       rotorName,
     });
@@ -131,36 +122,29 @@ export default function BattlePage() {
       setRoom(data.room);
       if (data.room.status === 'in_progress') setPhase('battle');
     }
-  }, [account, selectedRotor, roomId, beys, api]);
+  }, [myId, selectedRotor, roomId, beys, roomApi]);
 
   const handleSubmitResult = useCallback(async () => {
-    if (!account || !winner) return;
-    const data = await api({
-      action: 'submit-result', roomId, submitter: account.address,
+    if (!myId || !winner) return;
+    const data = await roomApi({
+      action: 'submit-result', roomId,
       winner, finishType, scoreA, scoreB,
     });
     if (data.success) { setRoom(data.room); setPhase('submit'); }
-  }, [account, roomId, winner, finishType, scoreA, scoreB, api]);
+  }, [myId, roomId, winner, finishType, scoreA, scoreB, roomApi]);
 
   const handleConfirm = useCallback(async () => {
-    if (!account) return;
-    await api({ action: 'confirm-result', roomId, confirmer: account.address });
+    if (!myId) return;
+    await roomApi({ action: 'confirm-result', roomId });
 
-    // Commit to chain — sign so the server can verify we're a participant.
-    const auth = await getAuthSig();
-    const res = await fetch('/api/submit-result', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playerA: room?.creator,
-        playerB: room?.opponent,
-        rotorA: room?.creatorRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
-        rotorB: room?.opponentRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
-        winner, finishType, scoreA, scoreB,
-        submitter: auth.address,
-        authMessage: auth.authMessage,
-        authSignature: auth.authSignature,
-      }),
+    // Commit to chain — the server derives our participant identity from the
+    // session and relays the on-chain record with the platform signer.
+    const res = await api('/api/submit-result', {
+      playerA: room?.creator,
+      playerB: room?.opponent,
+      rotorA: room?.creatorRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
+      rotorB: room?.opponentRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
+      winner, finishType, scoreA, scoreB,
     });
     const data = await res.json();
     if (data.success) {
@@ -169,27 +153,27 @@ export default function BattlePage() {
     } else {
       setError(data.error);
     }
-  }, [account, getAuthSig, roomId, room, winner, finishType, scoreA, scoreB, api]);
+  }, [myId, roomId, room, winner, finishType, scoreA, scoreB, roomApi]);
 
   // Poll for room updates during waiting / select / submit phases so each
   // player sees the other's selection + result without manual refresh.
   useEffect(() => {
     if (phase !== 'waiting' && phase !== 'select' && phase !== 'submit') return;
     const interval = setInterval(async () => {
-      const data = await api({ action: 'get', roomId });
+      const data = await roomApi({ action: 'get', roomId });
       if (!data.room) return;
       setRoom(data.room);
       if (phase === 'waiting' && data.room.status === 'ready') setPhase('select');
       if (phase === 'select' && data.room.status === 'in_progress') setPhase('battle');
     }, 3000);
     return () => clearInterval(interval);
-  }, [phase, roomId, api]);
+  }, [phase, roomId, roomApi]);
 
   // Deep-link from the Friends page: ?join=CODE auto-joins as opponent,
   // ?room=CODE resumes as the room creator (waiting for the friend to join).
   const deepLinkHandled = useRef(false);
   useEffect(() => {
-    if (deepLinkHandled.current || !account) return;
+    if (deepLinkHandled.current || !myId) return;
     const params = new URLSearchParams(window.location.search);
     const joinParam = params.get('join');
     const roomParam = params.get('room');
@@ -197,8 +181,8 @@ export default function BattlePage() {
     deepLinkHandled.current = true;
     (async () => {
       if (joinParam) {
-        const data = await api({ action: 'join', roomId: joinParam, opponent: account.address });
-        const target = data.room ?? (await api({ action: 'get', roomId: joinParam })).room;
+        const data = await roomApi({ action: 'join', roomId: joinParam });
+        const target = data.room ?? (await roomApi({ action: 'get', roomId: joinParam })).room;
         if (target) {
           setRoomId(joinParam);
           setRoom(target);
@@ -207,7 +191,7 @@ export default function BattlePage() {
           setError(data.error);
         }
       } else if (roomParam) {
-        const got = await api({ action: 'get', roomId: roomParam });
+        const got = await roomApi({ action: 'get', roomId: roomParam });
         if (got.room) {
           setRoomId(roomParam);
           setRoom(got.room);
@@ -215,15 +199,15 @@ export default function BattlePage() {
         }
       }
     })();
-  }, [account, api]);
+  }, [myId, roomApi]);
 
   // Opponent's bey object (fetched directly from chain so we always see
   // their real name + stats — independent of what the room cache claims).
-  const opponentAddress = account
-    ? (room?.creator === account.address ? room?.opponent : room?.creator)
+  const opponentAddress = myId
+    ? (room?.creator === myId ? room?.opponent : room?.creator)
     : null;
-  const opponentRotorId = account
-    ? (room?.creator === account.address ? room?.opponentRotor : room?.creatorRotor)
+  const opponentRotorId = myId
+    ? (room?.creator === myId ? room?.opponentRotor : room?.creatorRotor)
     : null;
 
   const { data: opponentBeyObj } = useSuiClientQuery(
@@ -250,9 +234,9 @@ export default function BattlePage() {
     };
   }, [opponentBeyObj]);
 
-  if (!account) {
+  if (!myId) {
     return (
-      <PageHeader eyebrow="BATTLE" title={<>{isZh ? '連接錢包開始對戰' : 'Connect wallet to battle'}</>} sub="" kanjiBg="戰" />
+      <PageHeader eyebrow="BATTLE" title={<>{isPending ? (isZh ? '載入中…' : 'Loading…') : (isZh ? '登入開始對戰' : 'Sign in to battle')}</>} sub="" kanjiBg="戰" />
     );
   }
 
@@ -348,7 +332,7 @@ export default function BattlePage() {
           {/* Phase: Select Rotor */}
           {phase === 'select' && (() => {
             const lastUsedId = getLastUsedRotor();
-            const myRotorId = account ? (room?.creator === account.address ? room?.creatorRotor : room?.opponentRotor) : null;
+            const myRotorId = myId ? (room?.creator === myId ? room?.creatorRotor : room?.opponentRotor) : null;
             const myConfirmed = !!myRotorId;
             const opponentConfirmed = !!opponentRotorId;
             return (

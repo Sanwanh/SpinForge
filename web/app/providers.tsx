@@ -21,6 +21,9 @@ export function Providers({ children }: { children: ReactNode }) {
     },
   }));
 
+  // Auth is now session-based (Better Auth), so the app no longer requires a
+  // connected wallet. SuiClientProvider is kept for read-only chain reads;
+  // WalletProvider remains harmlessly so any legacy wallet UI still mounts.
   return (
     <QueryClientProvider client={queryClient}>
       <SuiClientProvider networks={networkConfig} defaultNetwork={SUI_NETWORK}>

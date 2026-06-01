@@ -2,22 +2,22 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useDeck, type DeckBey } from '@/hooks/useDeck';
 import { useInventory } from '@/hooks/useInventory';
+import { useGameUser } from '@/hooks/useGameUser';
 import { DeckBuilder } from '@/components/deck/DeckBuilder';
 import { DuplicateWarning } from '@/components/deck/DuplicateWarning';
 import { useT } from '@/lib/i18n';
 import { Eyebrow, PageHeader, Section } from '@/components/design/atoms';
 
 export default function DeckPage() {
-  const account = useCurrentAccount();
+  const { user } = useGameUser();
   const { beys: deckBeys, techniques, hasDuplicates, setBey, setTechniques, clear } = useDeck();
   const { beys: ownedBeys, isLoading } = useInventory();
   const t = useT();
   const [selectingSlot, setSelectingSlot] = useState<number | null>(null);
 
-  if (!account) {
+  if (!user) {
     return (
       <>
         <PageHeader

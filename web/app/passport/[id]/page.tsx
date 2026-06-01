@@ -3,7 +3,6 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useCurrentAccount, useSuiClientQuery } from '@mysten/dapp-kit';
 import {
   Eyebrow,
   PageHeader,
@@ -15,35 +14,29 @@ import {
 import { Beyblade } from '@/components/design/Beyblade';
 import { BeyCard, type BeyCardData, elementForBey } from '@/components/design/BeyCard';
 import { ELEMENT_MAP } from '@/components/design/tokens';
-import { ORIGINAL_PACKAGE_ID } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
+import { useGameUser } from '@/hooks/useGameUser';
+import { useInventory } from '@/hooks/useInventory';
+import { useRotor } from '@/hooks/usePassport';
+import type { PartObject } from '@/lib/inventory-types';
 
-const FRESH = { refetchOnMount: 'always' as const, staleTime: 0 };
+// ─── Bey fields → BeyCardData helper ────────────────────────────────────
 
-// ─── On-chain Bey → BeyCardData helpers ─────────────────────────────────
-
-function beyToCard(b: { data?: unknown } | null | undefined): BeyCardData | null {
-  if (!b || typeof b !== 'object') return null;
-  const data = (b as { data?: { objectId?: string; content?: unknown } | null }).data;
-  if (!data?.objectId) return null;
-  const content = data.content as
-    | { dataType?: string; fields?: Record<string, unknown> | unknown[] }
-    | null
-    | undefined;
-  if (!content || content.dataType !== 'moveObject') return null;
-  // Sui's MoveStruct can be either an object or an array — we only care when it's an object
-  const fieldsRaw = content.fields;
-  const fields: Record<string, unknown> = Array.isArray(fieldsRaw)
-    ? {}
-    : (fieldsRaw ?? {});
+function fieldsToCard(objectId: string, fields: Record<string, unknown> | null): BeyCardData | null {
+  if (!objectId) return null;
+  const f = fields ?? {};
   return {
-    objectId: data.objectId,
-    name: String(fields.name ?? 'Unnamed Rotor'),
-    wins: Number(fields.wins ?? 0),
-    losses: Number(fields.losses ?? 0),
-    burstFinishes: Number(fields.burst_finishes ?? 0),
-    xtremeFinishes: Number(fields.xtreme_finishes ?? 0),
+    objectId,
+    name: String(f.name ?? 'Unnamed Rotor'),
+    wins: Number(f.wins ?? 0),
+    losses: Number(f.losses ?? 0),
+    burstFinishes: Number(f.burst_finishes ?? 0),
+    xtremeFinishes: Number(f.xtreme_finishes ?? 0),
   };
+}
+
+function partToCard(b: PartObject): BeyCardData | null {
+  return fieldsToCard(b.objectId, b.fields);
 }
 
 // ─── Name parser ────────────────────────────────────────────────────────
@@ -117,38 +110,24 @@ function analyzeFeature(
 export default function RotorDetailPage() {
   const params = useParams<{ id: string }>();
   const rotorId = params?.id ?? '';
-  const account = useCurrentAccount();
+  const { user } = useGameUser();
   const t = useT();
   const isZh = t.nav.home === '首頁';
 
   // The rotor being viewed (works even for someone else's rotor for sharing)
-  const { data: rotorObj, isLoading: loadingRotor } = useSuiClientQuery(
-    'getObject',
-    { id: rotorId, options: { showContent: true, showType: true } },
-    { enabled: !!rotorId, ...FRESH },
-  );
+  const { rotor: rotorView, isLoading: loadingRotor } = useRotor(rotorId);
 
-  // The current user's full bey collection — for ranking + build analysis
-  const { data: ownedObjects } = useSuiClientQuery(
-    'getOwnedObjects',
-    {
-      owner: account?.address ?? '',
-      filter: { Package: ORIGINAL_PACKAGE_ID },
-      options: { showType: true, showContent: true },
-    },
-    { enabled: !!account?.address, ...FRESH },
-  );
+  // The current user's full Bey collection — for ranking + build analysis
+  const { beys: ownedBeys } = useInventory();
 
   const allRotors: BeyCardData[] = React.useMemo(() => {
-    const items = ownedObjects?.data ?? [];
-    const beys = items.filter((i) => i.data?.type?.includes('::bey::'));
-    return beys.map(beyToCard).filter((c): c is BeyCardData => c !== null);
-  }, [ownedObjects]);
+    return ownedBeys.map(partToCard).filter((c): c is BeyCardData => c !== null);
+  }, [ownedBeys]);
 
   const rotor: BeyCardData | null = React.useMemo(() => {
-    if (!rotorObj?.data) return null;
-    return beyToCard({ data: rotorObj.data });
-  }, [rotorObj]);
+    if (!rotorView?.objectId) return null;
+    return fieldsToCard(rotorView.objectId, rotorView.fields);
+  }, [rotorView]);
 
   if (loadingRotor) {
     return (
@@ -212,13 +191,9 @@ export default function RotorDetailPage() {
     ? { blade: bladeStats[0].key, ratchet: ratchetStats[0].key, bit: bitStats[0].key }
     : null;
 
-  const isOwner = account?.address && rotorObj?.data && (() => {
-    // Check ownership for "Take to battle" CTA — if owner field exists
-    const fields = (rotorObj.data.content as { fields?: Record<string, unknown> } | undefined)?.fields;
-    void fields;
-    // Heuristic: if this rotor is in user's owned list
-    return allRotors.some((r) => r.objectId === rotor.objectId);
-  })();
+  // Owner CTA: shown when the viewer is signed in and this rotor is in their
+  // DB-backed inventory.
+  const isOwner = !!user && allRotors.some((r) => r.objectId === rotor.objectId);
 
   return (
     <>

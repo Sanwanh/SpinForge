@@ -25,6 +25,19 @@ module spinforge::pack {
         bit_count: u64,
     }
 
+    /// Web2-hybrid: a pack opened by the platform relay on behalf of a user.
+    /// The parts are owned on-chain by the platform custody (ctx.sender());
+    /// `recipient_subject` is the deterministic pseudonymous attribution subject
+    /// and `operation_id` ties the mint back to the Postgres outbox row.
+    public struct PackOpenedFor has copy, drop {
+        custody: address,
+        recipient_subject: address,
+        operation_id: vector<u8>,
+        blade_count: u64,
+        ratchet_count: u64,
+        bit_count: u64,
+    }
+
     // ===== Pack Opening =====
 
     /// Open a pack: costs 100 SPARK, generates 5 random parts.
@@ -42,9 +55,53 @@ module spinforge::pack {
         // (the SPARK TreasuryCap is admin-owned), so the real buyer is the explicit
         // `recipient` — checking ctx.sender() would only ever check the admin relay.
         assert!(!admin::is_banned(config, recipient), EPlayerBanned);
+        burn_payment(payment, treasury_cap, ctx);
+
+        event::emit(PackOpened {
+            owner: recipient,
+            blade_count: 2,
+            ratchet_count: 2,
+            bit_count: 1,
+        });
+
+        // Parts mint straight to the buyer (no admin -> player forwarding tx).
+        generate_and_transfer_parts(recipient, r, ctx);
+    }
+
+    /// Web2-hybrid relay entry: open a pack whose parts are owned by the platform
+    /// custody address (ctx.sender()). Postgres attributes the parts to the real
+    /// user via `recipient_subject` + `operation_id` (carried in the event). The
+    /// ban check is deliberately NOT applied to the custody address — banning is
+    /// enforced off-chain at the API layer against the session user. There is no
+    /// SPARK burn here: pack cost is a DB ledger debit (see plan token note).
+    entry fun open_pack_for(
+        _treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
+        _config: &GameConfig,
+        recipient_subject: address,
+        _operation_id: vector<u8>,
+        r: &Random,
+        ctx: &mut TxContext,
+    ) {
+        event::emit(PackOpenedFor {
+            custody: ctx.sender(),
+            recipient_subject,
+            operation_id: _operation_id,
+            blade_count: 2,
+            ratchet_count: 2,
+            bit_count: 1,
+        });
+
+        // Parts mint to the platform custody (ctx.sender()).
+        generate_and_transfer_parts(ctx.sender(), r, ctx);
+    }
+
+    /// Burn exactly PACK_COST from the payment; refund any overpayment (L-3).
+    fun burn_payment(
+        payment: Coin<SPARK_TOKEN>,
+        treasury_cap: &mut TreasuryCap<SPARK_TOKEN>,
+        ctx: &mut TxContext,
+    ) {
         assert!(coin::value(&payment) >= PACK_COST, EInsufficientPayment);
-        // L-3: burn only the exact cost; refund any overpayment to the buyer
-        // instead of silently destroying it.
         let mut payment = payment;
         let cost = coin::split(&mut payment, PACK_COST, ctx);
         coin::burn(treasury_cap, cost);
@@ -53,7 +110,11 @@ module spinforge::pack {
         } else {
             coin::destroy_zero(payment);
         };
+    }
 
+    /// Generate the fixed 2 Blades / 2 Ratchets / 1 Bit and transfer them to
+    /// `recipient`. Shared by both the wallet-paid and relay entry points.
+    fun generate_and_transfer_parts(recipient: address, r: &Random, ctx: &mut TxContext) {
         let mut gen = random::new_generator(r, ctx);
 
         let mut blades = vector::empty<Blade>();
@@ -123,25 +184,16 @@ module spinforge::pack {
         );
         vector::push_back(&mut bits, bit);
 
-        event::emit(PackOpened {
-            owner: recipient,
-            blade_count: 2,
-            ratchet_count: 2,
-            bit_count: 1,
-        });
-
-        // Parts mint straight to the buyer (no admin -> player forwarding tx).
-        let sender = recipient;
         while (!vector::is_empty(&blades)) {
-            transfer::public_transfer(vector::pop_back(&mut blades), sender);
+            transfer::public_transfer(vector::pop_back(&mut blades), recipient);
         };
         vector::destroy_empty(blades);
         while (!vector::is_empty(&ratchets)) {
-            transfer::public_transfer(vector::pop_back(&mut ratchets), sender);
+            transfer::public_transfer(vector::pop_back(&mut ratchets), recipient);
         };
         vector::destroy_empty(ratchets);
         while (!vector::is_empty(&bits)) {
-            transfer::public_transfer(vector::pop_back(&mut bits), sender);
+            transfer::public_transfer(vector::pop_back(&mut bits), recipient);
         };
         vector::destroy_empty(bits);
     }

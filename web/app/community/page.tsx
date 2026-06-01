@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
+import { useGameUser } from '@/hooks/useGameUser';
+import { api } from '@/lib/api-fetch';
 import { useT } from '@/lib/i18n';
 import { PageHeader, Section, Corners } from '@/components/design/atoms';
-import { useCachedAuthSig } from '@/lib/use-auth-sig';
 import { ELEMENT_MAP } from '@/components/design/tokens';
 import {
   SEED_COMBOS,
@@ -34,16 +34,16 @@ interface Comment {
 }
 
 const ARCHETYPES: Archetype[] = ['Attack', 'Defense', 'Stamina', 'Balance'];
-const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+const short = (a: string) => (a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
 const ARCH_COLOR: Record<string, string> = {
   Attack: 'var(--fire)', Defense: 'var(--metal, #C0C0C0)', Stamina: 'var(--water, #00CCFF)', Balance: 'var(--gold)',
 };
 
 export default function CommunityPage() {
-  const { address } = useAuth();
+  const { user } = useGameUser();
   const t = useT();
   const isZh = t.nav.home === '首頁';
-  const getAuth = useCachedAuthSig();
+  const myId = user?.id ?? null;
 
   const [filter, setFilter] = useState<Archetype | 'All'>('All');
   const [posts, setPosts] = useState<Post[]>([]);
@@ -59,7 +59,7 @@ export default function CommunityPage() {
 
   const refreshPosts = useCallback(async () => {
     try {
-      const res = await fetch('/api/community');
+      const res = await api('/api/community');
       const data = await res.json();
       if (res.ok) setPosts(data.posts ?? []);
     } catch {
@@ -74,7 +74,7 @@ export default function CommunityPage() {
     setOpenId(id);
     setComments([]);
     try {
-      const res = await fetch(`/api/community?post=${id}`);
+      const res = await api(`/api/community?post=${id}`);
       const data = await res.json();
       if (res.ok) setComments(data.comments ?? []);
     } catch {
@@ -83,7 +83,7 @@ export default function CommunityPage() {
   }, [openId]);
 
   const submitPost = useCallback(async () => {
-    if (!address) return;
+    if (!myId) return;
     const { title, blade, ratchet, bit, body } = form;
     if (!title.trim() || !blade.trim() || !ratchet.trim() || !bit.trim() || !body.trim()) {
       setNotice({ ok: false, text: isZh ? '請填完所有欄位' : 'Fill in all fields' });
@@ -91,12 +91,7 @@ export default function CommunityPage() {
     }
     setPosting(true);
     try {
-      const auth = await getAuth();
-      const res = await fetch('/api/community', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'post', author: address, ...form, ...auth }),
-      });
+      const res = await api('/api/community', { action: 'post', ...form });
       const data = await res.json();
       if (res.ok) {
         setNotice({ ok: true, text: isZh ? '已分享你的組合!' : 'Combo shared!' });
@@ -109,37 +104,27 @@ export default function CommunityPage() {
     } finally {
       setPosting(false);
     }
-  }, [address, form, isZh, getAuth, refreshPosts]);
+  }, [myId, form, isZh, refreshPosts]);
 
   const vote = useCallback(async (id: string) => {
-    if (!address) { setNotice({ ok: false, text: isZh ? '連接錢包才能按讚' : 'Connect wallet to vote' }); return; }
-    const auth = await getAuth();
-    const res = await fetch('/api/community', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'vote', author: address, postId: id, ...auth }),
-    });
+    if (!myId) { setNotice({ ok: false, text: isZh ? '登入才能按讚' : 'Sign in to vote' }); return; }
+    const res = await api('/api/community', { action: 'vote', postId: id });
     const data = await res.json();
     if (res.ok) {
       setPosts((ps) => ps.map((p) => (p.id === id ? { ...p, votes: data.votes } : p)));
       if (data.alreadyVoted) setNotice({ ok: false, text: isZh ? '你已經按過讚了' : 'Already voted' });
     }
-  }, [address, isZh, getAuth]);
+  }, [myId, isZh]);
 
   const submitComment = useCallback(async (id: string) => {
-    if (!address) return;
+    if (!myId) return;
     const text = commentInput.trim();
     if (!text) return;
     setCommentInput('');
-    setComments((c) => [...c, { author: address, text, ts: Date.now() }]);
-    const auth = await getAuth();
-    await fetch('/api/community', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'comment', author: address, postId: id, text, ...auth }),
-    });
+    setComments((c) => [...c, { author: myId, text, ts: Date.now() }]);
+    await api('/api/community', { action: 'comment', postId: id, text });
     setPosts((ps) => ps.map((p) => (p.id === id ? { ...p, commentCount: p.commentCount + 1 } : p)));
-  }, [address, commentInput, getAuth]);
+  }, [myId, commentInput]);
 
   const shown = filter === 'All' ? SEED_COMBOS : SEED_COMBOS.filter((c) => c.archetype === filter);
 
@@ -206,7 +191,7 @@ export default function CommunityPage() {
           {/* ---- Community posts ---- */}
           <div className="t-eyebrow" style={{ color: 'var(--gold)', marginTop: 12 }}>{isZh ? '社群分享' : 'Community Builds'} · {posts.length}</div>
 
-          {address ? (
+          {myId ? (
             <div className="panel" style={{ padding: 18 }}>
               {!showComposer ? (
                 <button onClick={() => setShowComposer(true)} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
@@ -231,7 +216,7 @@ export default function CommunityPage() {
             </div>
           ) : (
             <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-              {isZh ? '連接錢包即可分享組合、按讚、留言一起討論。' : 'Connect your wallet to share combos, vote, and discuss.'}
+              {isZh ? '登入即可分享組合、按讚、留言一起討論。' : 'Sign in to share combos, vote, and discuss.'}
             </p>
           )}
 
@@ -276,7 +261,7 @@ export default function CommunityPage() {
                             <span style={{ whiteSpace: 'pre-wrap' }}>{cm.text}</span>
                           </div>
                         ))}
-                        {address && (
+                        {myId && (
                           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
                             <input style={input} placeholder={isZh ? '留言…' : 'Comment…'} value={commentInput} maxLength={400} onChange={(e) => setCommentInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submitComment(p.id); }} />
                             <button onClick={() => submitComment(p.id)} disabled={!commentInput.trim()} className="btn btn-primary" style={{ flexShrink: 0 }}>{isZh ? '送出' : 'Send'}</button>

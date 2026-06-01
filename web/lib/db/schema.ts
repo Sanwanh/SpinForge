@@ -141,3 +141,139 @@ export const chainIndexerCursors = pgTable('chain_indexer_cursors', {
   checkpoint: bigint('checkpoint', { mode: 'number' }),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
+// ===== Social tables (migrated off KV — plan phase 4) =====
+
+// Friendship is stored once per pair with a canonical ordering
+// (userLowId < userHighId) so a unique index dedupes both directions.
+export const friendships = pgTable('friendships', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userLowId: text('user_low_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  userHighId: text('user_high_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  requestedBy: text('requested_by').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  status: text('status').notNull(), // pending|accepted|blocked
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  pairIdx: uniqueIndex('friendships_pair_idx').on(t.userLowId, t.userHighId),
+  lowIdx: index('friendships_low_idx').on(t.userLowId, t.status),
+  highIdx: index('friendships_high_idx').on(t.userHighId, t.status),
+}));
+
+// A 1:1 direct-message thread, also keyed by the canonical (low, high) pair.
+export const directChatThreads = pgTable('direct_chat_threads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userLowId: text('user_low_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  userHighId: text('user_high_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  lastMessageAt: timestamp('last_message_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  pairIdx: uniqueIndex('direct_chat_threads_pair_idx').on(t.userLowId, t.userHighId),
+}));
+
+export const chatMessages = pgTable('chat_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  threadId: uuid('thread_id').notNull().references(() => directChatThreads.id, { onDelete: 'cascade' }),
+  senderId: text('sender_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(), // 1..500 chars (enforced at the route boundary)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  threadIdx: index('chat_messages_thread_idx').on(t.threadId, t.createdAt),
+}));
+
+export const communityPosts = pgTable('community_posts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  authorId: text('author_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  comboData: jsonb('combo_data'), // shared blade/ratchet/bit combo payload
+  score: integer('score').notNull().default(0),
+  commentCount: integer('comment_count').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  authorIdx: index('community_posts_author_idx').on(t.authorId, t.createdAt),
+  scoreIdx: index('community_posts_score_idx').on(t.score),
+}));
+
+export const communityComments = pgTable('community_comments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  postId: uuid('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
+  authorId: text('author_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  postIdx: index('community_comments_post_idx').on(t.postId, t.createdAt),
+}));
+
+// One vote per user per post; value is +1 / -1.
+export const communityVotes = pgTable('community_votes', {
+  postId: uuid('post_id').notNull().references(() => communityPosts.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  value: integer('value').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  pk: uniqueIndex('community_votes_pk').on(t.postId, t.userId),
+}));
+
+// A negotiated battle lobby. result is the canonical jsonb agreed by both sides;
+// version guards optimistic concurrency on the room state machine.
+export const battleRooms = pgTable('battle_rooms', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  code: text('code').notNull().unique(),
+  creatorId: text('creator_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  opponentId: text('opponent_id').references(() => user.id, { onDelete: 'cascade' }),
+  status: text('status').notNull(), // open|active|reporting|settled|cancelled
+  result: jsonb('result'),
+  version: integer('version').notNull().default(0),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  statusIdx: index('battle_rooms_status_idx').on(t.status, t.createdAt),
+}));
+
+// Each participant signs off on a canonical result hash; the on-chain record is
+// only relayed once BOTH confirmations agree.
+export const battleConfirmations = pgTable('battle_confirmations', {
+  roomId: uuid('room_id').notNull().references(() => battleRooms.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  resultHash: text('result_hash').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  pk: uniqueIndex('battle_confirmations_pk').on(t.roomId, t.userId),
+}));
+
+// A settled match. chain_record_id / tx_digest are unique once the committed
+// record is minted on-chain (nullable until then).
+export const battles = pgTable('battles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  roomId: uuid('room_id').references(() => battleRooms.id),
+  playerAId: text('player_a_id').notNull().references(() => user.id),
+  playerBId: text('player_b_id').notNull().references(() => user.id),
+  winnerId: text('winner_id').references(() => user.id),
+  finishType: integer('finish_type').notNull().default(0),
+  scoreA: integer('score_a').notNull().default(0),
+  scoreB: integer('score_b').notNull().default(0),
+  season: text('season'),
+  chainRecordId: text('chain_record_id').unique(),
+  txDigest: text('tx_digest').unique(),
+  chainStatus: text('chain_status').notNull(), // pending|committed|reconcile_needed
+  operationId: uuid('operation_id'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (t) => ({
+  playerAIdx: index('battles_player_a_idx').on(t.playerAId, t.createdAt),
+  playerBIdx: index('battles_player_b_idx').on(t.playerBId, t.createdAt),
+}));
+
+export const leaderboardEntries = pgTable('leaderboard_entries', {
+  season: text('season').notNull(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  elo: integer('elo').notNull().default(1000),
+  wins: integer('wins').notNull().default(0),
+  losses: integer('losses').notNull().default(0),
+  xtremeFinishes: integer('xtreme_finishes').notNull().default(0),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({
+  pk: uniqueIndex('leaderboard_entries_pk').on(t.season, t.userId),
+  rankIdx: index('leaderboard_entries_rank_idx').on(t.season, t.elo),
+}));

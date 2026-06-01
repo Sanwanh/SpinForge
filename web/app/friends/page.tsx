@@ -2,11 +2,11 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { useGameUser } from '@/hooks/useGameUser';
+import { api } from '@/lib/api-fetch';
 import { useT } from '@/lib/i18n';
 import { PageHeader, Section, Corners } from '@/components/design/atoms';
 import { QRCodeSVG } from 'qrcode.react';
-import { useCachedAuthSig } from '@/lib/use-auth-sig';
 
 interface ChatMessage {
   from: string;
@@ -20,14 +20,16 @@ interface BattleInvite {
   at: number;
 }
 
-const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+const short = (a: string) => (a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a);
 
 export default function FriendsPage() {
-  const { address } = useAuth();
+  const { user, isPending } = useGameUser();
   const t = useT();
   const isZh = t.nav.home === '首頁';
   const router = useRouter();
-  const getAuth = useCachedAuthSig();
+
+  // Session identity: the app user id is the canonical handle the server keys on.
+  const myId = user?.id ?? null;
 
   const [friends, setFriends] = useState<string[]>([]);
   const [requests, setRequests] = useState<string[]>([]);
@@ -44,9 +46,9 @@ export default function FriendsPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const refreshFriends = useCallback(async () => {
-    if (!address) return;
+    if (!myId) return;
     try {
-      const res = await fetch(`/api/friends?address=${address}`);
+      const res = await api('/api/friends');
       const data = await res.json();
       if (res.ok) {
         setFriends(data.friends ?? []);
@@ -56,22 +58,22 @@ export default function FriendsPage() {
     } catch {
       /* transient — next poll retries */
     }
-  }, [address]);
+  }, [myId]);
 
   const refreshChat = useCallback(async () => {
-    if (!address || !chatWith) return;
+    if (!myId || !chatWith) return;
     try {
-      const res = await fetch(`/api/chat?me=${address}&friend=${chatWith}`);
+      const res = await api(`/api/chat?friend=${encodeURIComponent(chatWith)}`);
       const data = await res.json();
       if (res.ok) setMessages(data.messages ?? []);
     } catch {
       /* transient */
     }
-  }, [address, chatWith]);
+  }, [myId, chatWith]);
 
   // Poll for friends/requests/invites, and chat messages when a thread is open.
   useEffect(() => {
-    if (!address) return;
+    if (!myId) return;
     refreshFriends();
     refreshChat();
     const interval = setInterval(() => {
@@ -79,27 +81,22 @@ export default function FriendsPage() {
       refreshChat();
     }, 4000);
     return () => clearInterval(interval);
-  }, [address, refreshFriends, refreshChat]);
+  }, [myId, refreshFriends, refreshChat]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Opening an invite link (?add=<address>) auto-sends a friend request.
+  // Opening an invite link (?add=<id>) auto-sends a friend request.
   useEffect(() => {
-    if (!address || inviteHandled.current) return;
+    if (!myId || inviteHandled.current) return;
     const add = new URLSearchParams(window.location.search).get('add');
     if (!add) return;
     inviteHandled.current = true;
     window.history.replaceState({}, '', '/friends');
-    if (!/^0x[0-9a-fA-F]{2,64}$/.test(add) || add === address) return;
+    if (add === myId) return;
     (async () => {
-      const auth = await getAuth();
-      const res = await fetch('/api/friends', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'request', from: address, to: add, ...auth }),
-      });
+      const res = await api('/api/friends', { action: 'request', to: add });
       const data = await res.json();
       if (res.ok) {
         setNotice({
@@ -111,21 +108,16 @@ export default function FriendsPage() {
       }
       refreshFriends();
     })();
-  }, [address, isZh, refreshFriends, getAuth]);
+  }, [myId, isZh, refreshFriends]);
 
   const sendRequest = useCallback(async () => {
-    if (!address) return;
+    if (!myId) return;
     const to = addInput.trim();
-    if (!/^0x[0-9a-fA-F]{2,64}$/.test(to)) {
-      setNotice({ ok: false, text: isZh ? '請輸入有效的錢包地址(0x…)' : 'Enter a valid wallet address (0x…)' });
+    if (!to) {
+      setNotice({ ok: false, text: isZh ? '請輸入對方的好友碼' : 'Enter a friend code' });
       return;
     }
-    const auth = await getAuth();
-    const res = await fetch('/api/friends', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'request', from: address, to, ...auth }),
-    });
+    const res = await api('/api/friends', { action: 'request', to });
     const data = await res.json();
     if (res.ok) {
       setNotice({ ok: true, text: data.alreadyFriends ? (isZh ? '你們已經是好友' : 'Already friends') : (isZh ? '好友邀請已送出' : 'Friend request sent') });
@@ -133,96 +125,67 @@ export default function FriendsPage() {
     } else {
       setNotice({ ok: false, text: data.error });
     }
-  }, [address, addInput, isZh, getAuth]);
+  }, [myId, addInput, isZh]);
 
   const respond = useCallback(async (action: 'accept' | 'decline', from: string) => {
-    if (!address) return;
-    const auth = await getAuth();
-    await fetch('/api/friends', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, me: address, from, ...auth }),
-    });
+    if (!myId) return;
+    await api('/api/friends', { action, from });
     refreshFriends();
-  }, [address, getAuth, refreshFriends]);
+  }, [myId, refreshFriends]);
 
   const removeFriend = useCallback(async (friend: string) => {
-    if (!address) return;
-    const auth = await getAuth();
-    await fetch('/api/friends', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'remove', me: address, friend, ...auth }),
-    });
+    if (!myId) return;
+    await api('/api/friends', { action: 'remove', friend });
     if (chatWith === friend) setChatWith(null);
     refreshFriends();
-  }, [address, getAuth, chatWith, refreshFriends]);
+  }, [myId, chatWith, refreshFriends]);
 
   const startBattle = useCallback(async (friend: string) => {
-    if (!address) return;
-    const auth = await getAuth();
-    const res = await fetch('/api/battle-room', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'create', creator: address, ...auth }),
-    });
+    if (!myId) return;
+    const res = await api('/api/battle-room', { action: 'create' });
     const data = await res.json();
     if (data.roomId) {
-      await fetch('/api/friends', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'invite-battle', from: address, to: friend, roomId: data.roomId, ...auth }),
-      });
+      await api('/api/friends', { action: 'invite-battle', to: friend, roomId: data.roomId });
       router.push(`/battle?room=${data.roomId}`);
     }
-  }, [address, getAuth, router]);
+  }, [myId, router]);
 
   const joinInvite = useCallback(async () => {
-    if (!address || !invite) return;
-    const auth = await getAuth();
-    await fetch('/api/friends', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'clear-invite', me: address, ...auth }),
-    });
+    if (!myId || !invite) return;
+    await api('/api/friends', { action: 'clear-invite' });
     router.push(`/battle?join=${invite.roomId}`);
-  }, [address, getAuth, invite, router]);
+  }, [myId, invite, router]);
 
   const sendMessage = useCallback(async () => {
-    if (!address || !chatWith) return;
+    if (!myId || !chatWith) return;
     const text = chatInput.trim();
     if (!text) return;
     setChatInput('');
     // Optimistic append
-    setMessages((m) => [...m, { from: address, text, ts: Date.now() }]);
-    const auth = await getAuth();
-    await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: address, to: chatWith, text, ...auth }),
-    });
+    setMessages((m) => [...m, { from: myId, text, ts: Date.now() }]);
+    await api('/api/chat', { to: chatWith, text });
     refreshChat();
-  }, [address, getAuth, chatWith, chatInput, refreshChat]);
+  }, [myId, chatWith, chatInput, refreshChat]);
 
   const copyAddress = useCallback(() => {
-    if (!address) return;
-    navigator.clipboard?.writeText(address);
+    if (!myId) return;
+    navigator.clipboard?.writeText(myId);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
-  }, [address]);
+  }, [myId]);
 
   const copyLink = useCallback(() => {
-    if (!address) return;
-    navigator.clipboard?.writeText(`${window.location.origin}/friends?add=${address}`);
+    if (!myId) return;
+    navigator.clipboard?.writeText(`${window.location.origin}/friends?add=${encodeURIComponent(myId)}`);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 1500);
-  }, [address]);
+  }, [myId]);
 
-  if (!address) {
+  if (!myId) {
     return (
       <PageHeader
         eyebrow="FRIENDS · 好友"
-        title={<>{isZh ? '連接錢包查看好友' : 'Connect wallet to see friends'}</>}
+        title={<>{isPending ? (isZh ? '載入中…' : 'Loading…') : (isZh ? '登入查看好友' : 'Sign in to see friends')}</>}
         sub=""
         kanjiBg="友"
       />
@@ -261,23 +224,23 @@ export default function FriendsPage() {
             <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 14 }}>{isZh ? '加我好友' : 'Add Me'}</div>
             <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
               <div style={{ background: '#fff', padding: 10, borderRadius: 12, flexShrink: 0, lineHeight: 0 }}>
-                <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/friends?add=${address}`} size={112} bgColor="#ffffff" fgColor="#0a0e17" level="M" />
+                <QRCodeSVG value={`${typeof window !== 'undefined' ? window.location.origin : ''}/friends?add=${encodeURIComponent(myId)}`} size={112} bgColor="#ffffff" fgColor="#0a0e17" level="M" />
               </div>
               <div style={{ flex: 1, minWidth: 200, display: 'grid', gap: 10 }}>
                 <div>
                   <div className="t-mono" style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.14em', marginBottom: 4 }}>{isZh ? '我的好友碼' : 'MY CODE'}</div>
-                  <div className="t-mono" style={{ fontSize: 16, color: 'var(--gold)', letterSpacing: '0.04em' }}>{short(address)}</div>
+                  <div className="t-mono" style={{ fontSize: 16, color: 'var(--gold)', letterSpacing: '0.04em' }}>{user?.handle ?? short(myId)}</div>
                 </div>
                 <button onClick={copyLink} className="btn btn-primary" style={{ fontSize: 12, padding: '9px 0', width: '100%', justifyContent: 'center' }}>
                   {linkCopied ? (isZh ? '✓ 連結已複製' : '✓ Link copied') : (isZh ? '複製邀請連結' : 'Copy invite link')}
                 </button>
                 <button onClick={copyAddress} className="btn btn-ghost" style={{ fontSize: 11, padding: '8px 0', width: '100%', justifyContent: 'center' }}>
-                  {copied ? (isZh ? '✓ 完整地址已複製' : '✓ Address copied') : (isZh ? '複製完整地址' : 'Copy full address')}
+                  {copied ? (isZh ? '✓ 好友碼已複製' : '✓ Code copied') : (isZh ? '複製好友碼' : 'Copy friend code')}
                 </button>
               </div>
             </div>
             <p className="muted" style={{ fontSize: 11, marginTop: 14, marginBottom: 0, lineHeight: 1.5 }}>
-              {isZh ? '讓朋友掃描 QR 或點開邀請連結,就會自動送出好友邀請 — 不用打地址。' : 'Friends scan the QR or open your invite link to send a request automatically — no address typing.'}
+              {isZh ? '讓朋友掃描 QR 或點開邀請連結,就會自動送出好友邀請 — 不用打地址。' : 'Friends scan the QR or open your invite link to send a request automatically — no typing.'}
             </p>
           </div>
 
@@ -288,7 +251,7 @@ export default function FriendsPage() {
               <input
                 value={addInput}
                 onChange={(e) => setAddInput(e.target.value)}
-                placeholder={isZh ? '貼上對方的錢包地址 0x…' : "Paste friend's address 0x…"}
+                placeholder={isZh ? '貼上對方的好友碼' : "Paste friend's code"}
                 style={{ flex: 1, padding: '10px 14px', borderRadius: 8, background: 'var(--void)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 13 }}
               />
               <button onClick={sendRequest} className="btn btn-primary" style={{ flexShrink: 0 }}>
@@ -323,7 +286,7 @@ export default function FriendsPage() {
             <div className="t-eyebrow" style={{ marginBottom: 12 }}>{isZh ? '我的好友' : 'My Friends'} · {friends.length}</div>
             {friends.length === 0 ? (
               <p className="muted" style={{ fontSize: 13, margin: 0 }}>
-                {isZh ? '還沒有好友。把你的好友碼分享給朋友,或貼上他們的地址加好友。' : 'No friends yet. Share your code or paste an address above.'}
+                {isZh ? '還沒有好友。把你的好友碼分享給朋友,或貼上他們的好友碼加好友。' : 'No friends yet. Share your code or paste a code above.'}
               </p>
             ) : (
               <div style={{ display: 'grid', gap: 10 }}>
@@ -348,7 +311,7 @@ export default function FriendsPage() {
                   <p className="muted" style={{ fontSize: 12, textAlign: 'center', margin: '16px 0' }}>{isZh ? '還沒有訊息,打聲招呼吧' : 'No messages yet — say hi'}</p>
                 ) : (
                   messages.map((m, i) => {
-                    const mine = m.from === address;
+                    const mine = m.from === myId;
                     return (
                       <div key={i} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '78%' }}>
                         <div style={{ padding: '8px 12px', borderRadius: 10, fontSize: 13, lineHeight: 1.4, background: mine ? 'rgba(212,175,55,0.14)' : 'var(--void)', border: `1px solid ${mine ? 'var(--gold)' : 'var(--border)'}`, color: 'var(--text)' }}>
