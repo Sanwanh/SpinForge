@@ -2,8 +2,9 @@
 
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { useInventory } from '@/hooks/useInventory';
+import { useGameUser } from '@/hooks/useGameUser';
+import { api } from '@/lib/api-fetch';
 import { usePhysicsCalc } from '@/hooks/usePhysicsCalc';
 import { PartSlot } from '@/components/workshop/PartSlot';
 import { AssemblyPreview } from '@/components/workshop/AssemblyPreview';
@@ -11,7 +12,6 @@ import { StatsPanel } from '@/components/workshop/StatsPanel';
 import { PartGrid } from '@/components/collection/PartGrid';
 import type { PartCardData } from '@/components/collection/PartCard';
 import type { BladeStats, RatchetStats, BitStats } from '@/lib/physics-sim';
-import { assembleBey } from '@/lib/move-calls';
 import { useT } from '@/lib/i18n';
 import { PageHeader, Section, Eyebrow, Corners } from '@/components/design/atoms';
 import { useGuest } from '@/lib/guest';
@@ -49,10 +49,10 @@ function toBitStats(fields: Record<string, unknown>): BitStats {
 }
 
 export default function WorkshopPage() {
-  const account = useCurrentAccount();
+  const { user } = useGameUser();
   const { isGuest } = useGuest();
   const { blades, ratchets, bits, refetch } = useInventory();
-  const { mutateAsync: signAndExecute, isPending } = useSignAndExecuteTransaction();
+  const [isPending, setIsPending] = useState(false);
   const t = useT();
   const isZh = t.nav.home === '首頁';
 
@@ -73,23 +73,32 @@ export default function WorkshopPage() {
   const [assembleSuccess, setAssembleSuccess] = useState(false);
 
   const handleAssemble = useCallback(async () => {
-    if (!selectedBlade || !selectedRatchet || !selectedBit || !beyName.trim() || !account?.address) return;
+    if (!selectedBlade || !selectedRatchet || !selectedBit || !beyName.trim() || !user) return;
     setAssembleError(null);
     setAssembleSuccess(false);
+    setIsPending(true);
     try {
-      const tx = assembleBey(selectedBlade.objectId, selectedRatchet.objectId, selectedBit.objectId, beyName.trim(), account.address);
-      await signAndExecute({ transaction: tx });
+      const res = await api('/api/assets/assemble', {
+        bladeId: selectedBlade.objectId,
+        ratchetId: selectedRatchet.objectId,
+        bitId: selectedBit.objectId,
+        name: beyName.trim(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? 'Assembly failed');
       setSelectedBlade(null);
       setSelectedRatchet(null);
       setSelectedBit(null);
       setBeyName('');
       setAssembleSuccess(true);
-      refetch();
+      await refetch();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Assembly failed';
       setAssembleError(message);
+    } finally {
+      setIsPending(false);
     }
-  }, [selectedBlade, selectedRatchet, selectedBit, beyName, account, signAndExecute, refetch]);
+  }, [selectedBlade, selectedRatchet, selectedBit, beyName, user, refetch]);
 
   const filteredParts = activeSlot ? (
     activeSlot === 'blade' ? blades : activeSlot === 'ratchet' ? ratchets : bits
@@ -101,7 +110,7 @@ export default function WorkshopPage() {
     fields: p.fields,
   })) : [];
 
-  if (!account && !isGuest) {
+  if (!user && !isGuest) {
     return (
       <>
         <PageHeader

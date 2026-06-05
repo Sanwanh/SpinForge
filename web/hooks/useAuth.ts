@@ -1,16 +1,23 @@
+'use client';
+
 import { create } from 'zustand';
-import { useCurrentAccount } from '@mysten/dapp-kit';
+import { useSession, signOut } from '@/lib/auth-client';
 import { getStoredSession, clearSession, type ZkLoginSession } from '@/lib/zklogin';
 
-export type AuthMethod = 'wallet' | 'zklogin' | null;
+export type AuthMethod = 'session' | null;
 
-interface AuthState {
+/**
+ * Legacy zkLogin store — retained so the (still-importable) zkLogin callback
+ * page keeps compiling. Session auth is the primary path; this is not consulted
+ * by the main `useAuth` hook below.
+ */
+interface ZkAuthState {
   zkSession: ZkLoginSession | null;
   setZkSession: (session: ZkLoginSession | null) => void;
   logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<ZkAuthState>((set) => ({
   zkSession: typeof window !== 'undefined' ? getStoredSession() : null,
   setZkSession: (session) => set({ zkSession: session }),
   logout: () => {
@@ -19,26 +26,38 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 }));
 
+interface SessionUser {
+  id: string;
+  email: string;
+  name: string;
+}
+
+/**
+ * Primary auth hook — bridges the UI to Better Auth's traditional session.
+ *
+ * The export shape is kept stable so existing importers keep compiling:
+ * `address` is now always null (no wallet requirement for auth), and
+ * `displayName`/`email` derive from the session user.
+ */
 export function useAuth() {
-  const walletAccount = useCurrentAccount();
-  const { zkSession, logout } = useAuthStore();
+  const { data, isPending } = useSession();
+  const sessionUser = data?.user as SessionUser | undefined;
 
-  const authMethod: AuthMethod = walletAccount
-    ? 'wallet'
-    : zkSession
-      ? 'zklogin'
-      : null;
-
-  const address: string | null = walletAccount?.address ?? zkSession?.address ?? null;
-  const displayName: string | null = zkSession?.email
-    ?? (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : null);
+  const isAuthenticated = !!sessionUser;
+  const displayName: string | null = sessionUser
+    ? sessionUser.name || sessionUser.email
+    : null;
 
   return {
-    isAuthenticated: authMethod !== null,
-    authMethod,
-    address,
+    isAuthenticated,
+    isPending,
+    authMethod: (isAuthenticated ? 'session' : null) as AuthMethod,
+    address: null as string | null,
     displayName,
-    email: zkSession?.email ?? null,
-    logout,
+    email: sessionUser?.email ?? null,
+    user: sessionUser ?? null,
+    logout: () => {
+      void signOut();
+    },
   };
 }

@@ -1,38 +1,52 @@
 'use client';
 
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useCurrentAccount, useSuiClientQuery } from '@mysten/dapp-kit';
-import { useMemo } from 'react';
+import { useSession } from '@/lib/auth-client';
+import { api } from '@/lib/api-fetch';
 import { SPARK_TYPE } from '@/lib/constants';
 
+// SPARK balance is now read from the authoritative off-chain ledger (economy.ts)
+// via the session-authenticated GET /api/balance. The ledger stores whole-SPARK
+// integers, so no on-chain coin query / 1e9 decimal conversion is needed.
 export function useSparkBalance() {
-  const account = useCurrentAccount();
+  const { data: session } = useSession();
+  const loggedIn = !!session?.user;
 
-  const { data, isLoading, refetch } = useSuiClientQuery(
-    'getBalance',
-    {
-      owner: account?.address ?? '',
-      coinType: SPARK_TYPE,
-    },
-    {
-      enabled: !!account?.address,
-      // Refresh balance every page visit so a fresh mint/spend reflects immediately.
-      refetchOnMount: 'always',
-      staleTime: 0,
-    },
-  );
+  const [balance, setBalance] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const balance = useMemo(() => {
-    if (!data) return 0n;
-    return BigInt(data.totalBalance);
-  }, [data]);
+  const refetch = useCallback(async () => {
+    if (!loggedIn) {
+      setBalance(0);
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await api('/api/balance');
+      if (res.ok) {
+        const data = await res.json();
+        setBalance(Number(data.balance ?? 0));
+      }
+    } catch {
+      /* transient — caller can refetch */
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loggedIn]);
 
-  const formatted = useMemo(() => {
-    return (Number(balance) / 1_000_000_000).toFixed(0);
-  }, [balance]);
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  const formatted = useMemo(() => String(balance), [balance]);
 
   return { balance, formatted, isLoading, refetch };
 }
 
+// On-chain SPARK coin objects, still needed for building Sui transactions
+// (pack opening / forging spend real coins). This is a chain read, not an
+// identity/auth path, so it remains wallet-scoped.
 export function useSparkCoins() {
   const account = useCurrentAccount();
 

@@ -3,10 +3,10 @@
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
-import { useCurrentAccount } from '@mysten/dapp-kit';
 import { useForge, type ForgeMode } from '@/hooks/useForge';
 import { useInventory, type PartObject } from '@/hooks/useInventory';
-import { useSparkBalance, useSparkCoins } from '@/hooks/useSparkBalance';
+import { useSpark } from '@/hooks/useSpark';
+import { useGameUser } from '@/hooks/useGameUser';
 import { RARITY_LABELS } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
 import { PageHeader, Section, Eyebrow } from '@/components/design/atoms';
@@ -14,12 +14,11 @@ import { PageHeader, Section, Eyebrow } from '@/components/design/atoms';
 type PartType = 'blade' | 'ratchet' | 'bit';
 
 export default function ForgePage() {
-  const account = useCurrentAccount();
+  const { user } = useGameUser();
   const t = useT();
   const { doEvolve, doFuse, doRetune, isPending } = useForge();
   const { blades, ratchets, bits, refetch: refetchInventory } = useInventory();
-  const { formatted: sparkBalance, refetch: refetchSpark } = useSparkBalance();
-  const { primaryCoinId } = useSparkCoins();
+  const { formatted: sparkBalance, refetch: refetchSpark } = useSpark();
 
   const [activeMode, setActiveMode] = useState<ForgeMode>('evolve');
   const [selectedPartType, setSelectedPartType] = useState<PartType>('blade');
@@ -64,8 +63,8 @@ export default function ForgePage() {
   };
 
   const handleForge = useCallback(async () => {
-    if (!primaryCoinId) {
-      setError('No SPARK coins found. Use the faucet first!');
+    if (!user) {
+      setError('Sign in to forge.');
       return;
     }
     setError(null);
@@ -75,30 +74,31 @@ export default function ForgePage() {
       if (activeMode === 'evolve' && selectedParts.length === 3) {
         await doEvolve(
           [selectedParts[0].objectId, selectedParts[1].objectId, selectedParts[2].objectId],
-          primaryCoinId,
+          selectedPartType,
         );
         setSuccess('Evolution complete! Check your collection for the new Rare part.');
       } else if (activeMode === 'fuse' && selectedParts.length === 2) {
         await doFuse(
           [selectedParts[0].objectId, selectedParts[1].objectId],
-          primaryCoinId,
+          selectedPartType,
         );
         setSuccess('Fusion complete! Check your collection for the new Epic part.');
       } else if (activeMode === 'retune' && selectedParts.length === 1) {
         const currentAttack = Number(selectedParts[0].fields.attack ?? 50);
-        const newAttack = Math.floor(Math.random() * 80) + 20;
-        await doRetune(selectedParts[0].objectId, newAttack, primaryCoinId);
-        setSuccess(`Re-tune complete! Attack changed from ${currentAttack} to ${newAttack}.`);
+        const requested = Math.floor(Math.random() * 80) + 20;
+        const result = await doRetune(selectedParts[0].objectId, requested);
+        const applied = result.newAttack ?? requested;
+        setSuccess(`Re-tune complete! Attack changed from ${currentAttack} to ${applied}.`);
       }
 
       setSelectedParts([]);
       refetchInventory();
       refetchSpark();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Transaction failed';
+      const message = err instanceof Error ? err.message : 'Forge failed';
       setError(message);
     }
-  }, [activeMode, selectedParts, primaryCoinId, doEvolve, doFuse, doRetune, refetchInventory, refetchSpark]);
+  }, [user, activeMode, selectedParts, selectedPartType, doEvolve, doFuse, doRetune, refetchInventory, refetchSpark]);
 
   const handleModeChange = (mode: ForgeMode) => {
     setActiveMode(mode);
@@ -107,7 +107,7 @@ export default function ForgePage() {
     setSuccess(null);
   };
 
-  if (!account) {
+  if (!user) {
     return (
       <>
         <PageHeader
@@ -270,7 +270,7 @@ export default function ForgePage() {
         <div className="flex justify-center pt-2">
           <button
             onClick={handleForge}
-            disabled={isPending || selectedParts.length < currentMode.requiredCount || !primaryCoinId}
+            disabled={isPending || selectedParts.length < currentMode.requiredCount}
             className={clsx(
               'btn-primary',
               (isPending || selectedParts.length < currentMode.requiredCount) && 'opacity-50'

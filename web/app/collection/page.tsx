@@ -4,20 +4,19 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useState, useCallback } from 'react';
 import { useInventory } from '@/hooks/useInventory';
+import { useGameUser } from '@/hooks/useGameUser';
+import { api } from '@/lib/api-fetch';
 import { PartGrid } from '@/components/collection/PartGrid';
 import type { PartCardData } from '@/components/collection/PartCard';
-import { useCurrentAccount, useSignAndExecuteTransaction } from '@mysten/dapp-kit';
 import { useT } from '@/lib/i18n';
 import { PageHeader, Section, Stat } from '@/components/design/atoms';
-import { disassembleBey, discardPart } from '@/lib/move-calls';
 import { useGuest } from '@/lib/guest';
 import { GuestEntry } from '@/components/shared/Guest';
 
 export default function CollectionPage() {
-  const account = useCurrentAccount();
+  const { user } = useGameUser();
   const { isGuest } = useGuest();
   const { blades, ratchets, bits, beys, isLoading, refetch } = useInventory();
-  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const t = useT();
   const isZh = t.nav.home === '首頁';
   const canAssemble = blades.length > 0 && ratchets.length > 0 && bits.length > 0;
@@ -27,34 +26,36 @@ export default function CollectionPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const handleDisassemble = useCallback(async (beyId: string) => {
-    if (!account) { setActionError(isZh ? '請先連接錢包才能操作。' : 'Connect a wallet to do this.'); return; }
+    if (!user) { setActionError(isZh ? '請先登入才能操作。' : 'Sign in to do this.'); return; }
     if (!window.confirm(isZh ? '拆解這台陀螺?會變回刀刃、棘輪、軸尖三個零件。' : 'Disassemble this Bey back into its three parts?')) return;
     setActionError(null);
     setBusyId(beyId);
     try {
-      await signAndExecute({ transaction: disassembleBey(beyId, account.address) });
+      const res = await api('/api/assets/disassemble', { beyId });
+      if (!res.ok) throw new Error('disassemble failed');
       await refetch();
     } catch {
       setActionError(isZh ? '拆解失敗或已取消。' : 'Disassemble failed or cancelled.');
     } finally {
       setBusyId(null);
     }
-  }, [account, isZh, signAndExecute, refetch]);
+  }, [user, isZh, refetch]);
 
   const handleDiscard = useCallback(async (partId: string, type: 'blade' | 'ratchet' | 'bit') => {
-    if (!account) { setActionError(isZh ? '請先連接錢包才能操作。' : 'Connect a wallet to do this.'); return; }
+    if (!user) { setActionError(isZh ? '請先登入才能操作。' : 'Sign in to do this.'); return; }
     if (!window.confirm(isZh ? '永久銷毀這個零件?此動作無法復原。' : 'Permanently destroy this part? This cannot be undone.')) return;
     setActionError(null);
     setBusyId(partId);
     try {
-      await signAndExecute({ transaction: discardPart(partId, type) });
+      const res = await api('/api/assets/discard', { partId, type });
+      if (!res.ok) throw new Error('discard failed');
       await refetch();
     } catch {
       setActionError(isZh ? '銷毀失敗或已取消。' : 'Discard failed or cancelled.');
     } finally {
       setBusyId(null);
     }
-  }, [account, isZh, signAndExecute, refetch]);
+  }, [user, isZh, refetch]);
 
   const allParts: PartCardData[] = [
     ...blades.map((b) => ({
@@ -80,7 +81,7 @@ export default function CollectionPage() {
     })),
   ];
 
-  if (!account && !isGuest) {
+  if (!user && !isGuest) {
     return (
       <>
         <PageHeader

@@ -1,48 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomUUID } from 'crypto';
-import { kvGet, kvSet, kvRPush, kvLRange, kvSetNX } from '@/lib/kv';
-import { verifyAuth } from '@/lib/auth-verify';
+import { sql } from 'drizzle-orm';
+import { db } from '@/lib/db';
+import { requireGameUser } from '@/lib/server-user';
 import { isSameOrigin, rateLimited, safeError } from '@/lib/api-guard';
 
-// Community combo board: players post their builds and discuss. Off-chain social
-// state (KV), but every write is wallet-signature authenticated (same posture as
-// chat/friends/battle-room — audit H-12) so nobody can post as another address.
+// Community combo board, session-authenticated over Postgres. Every write is the
+// session user — the author is NEVER taken from the request body. The flat combo
+// fields (archetype/blade/ratchet/bit) live in community_posts.combo_data; the
+// route reshapes them back into the flat post object the UI consumes.
 
-const ADDR_RE = /^0x[0-9a-fA-F]{2,64}$/;
 const ARCHETYPES = ['Attack', 'Defense', 'Stamina', 'Balance'] as const;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_TITLE = 80;
 const MAX_FIELD = 60; // blade / ratchet / bit
 const MAX_BODY = 800;
 const MAX_COMMENT = 400;
 const LIST_CAP = 60;
 
-const IDS_KEY = 'community:post_ids';
-const postKey = (id: string) => `community:post:${id}`;
-const commentsKey = (id: string) => `community:comments:${id}`;
-const votedKey = (id: string, addr: string) => `community:voted:${id}:${addr}`;
-
-interface Post {
-  id: string;
-  author: string;
-  title: string;
+interface ComboData {
   archetype: string;
   blade: string;
   ratchet: string;
   bit: string;
+}
+
+interface PostRow {
+  id: string;
+  handle: string;
+  title: string;
   body: string;
-  votes: number;
-  commentCount: number;
-  ts: number;
-}
-
-interface Comment {
-  author: string;
-  text: string;
-  ts: number;
-}
-
-function isAddr(v: unknown): v is string {
-  return typeof v === 'string' && ADDR_RE.test(v);
+  combo_data: ComboData | null;
+  score: number;
+  comment_count: number;
+  created_at: string;
+  [k: string]: unknown;
 }
 
 function cleanField(v: unknown, max: number): string | null {
@@ -52,27 +43,70 @@ function cleanField(v: unknown, max: number): string | null {
   return s;
 }
 
-// GET /api/community            -> { posts } (newest first)
-// GET /api/community?post=<id>  -> { post, comments }
-export async function GET(request: NextRequest) {
-  const id = request.nextUrl.searchParams.get('post');
-  if (id) {
-    if (!/^[a-f0-9]{4,32}$/.test(id)) {
-      return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
-    }
-    const post = await kvGet<Post>(postKey(id));
-    if (!post) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    const comments = await kvLRange<Comment>(commentsKey(id), -200, -1);
-    return NextResponse.json({ post, comments });
-  }
+// Reshape a DB row into the flat post object the existing UI renders.
+function shapePost(r: PostRow) {
+  const combo = r.combo_data ?? { archetype: '', blade: '', ratchet: '', bit: '' };
+  return {
+    id: r.id,
+    author: r.handle,
+    title: r.title,
+    archetype: combo.archetype,
+    blade: combo.blade,
+    ratchet: combo.ratchet,
+    bit: combo.bit,
+    body: r.body,
+    votes: r.score,
+    commentCount: r.comment_count,
+    ts: new Date(r.created_at).getTime(),
+  };
+}
 
-  const ids = await kvLRange<string>(IDS_KEY, -LIST_CAP, -1);
-  const posts: Post[] = [];
-  for (const pid of ids.reverse()) {
-    const p = await kvGet<Post>(postKey(pid));
-    if (p) posts.push(p);
+// GET /api/community           -> { posts } (newest first)
+// GET /api/community?post=<id> -> { post, comments }
+export async function GET(request: NextRequest) {
+  try {
+    const id = request.nextUrl.searchParams.get('post');
+    if (id) {
+      if (!UUID_RE.test(id)) {
+        return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
+      }
+      const postRows = await db.execute<PostRow>(sql`
+        SELECT cp.id, p.handle AS handle, cp.title, cp.body, cp.combo_data,
+               cp.score, cp.comment_count, cp.created_at
+        FROM community_posts cp
+        JOIN profiles p ON p.user_id = cp.author_id
+        WHERE cp.id = ${id}
+        LIMIT 1
+      `);
+      if (!postRows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+      const commentRows = await db.execute<{ handle: string; body: string; created_at: string }>(sql`
+        SELECT p.handle AS handle, c.body AS body, c.created_at AS created_at
+        FROM community_comments c
+        JOIN profiles p ON p.user_id = c.author_id
+        WHERE c.post_id = ${id}
+        ORDER BY c.created_at ASC
+        LIMIT 200
+      `);
+      const comments = commentRows.map((c) => ({
+        author: c.handle,
+        text: c.body,
+        ts: new Date(c.created_at).getTime(),
+      }));
+      return NextResponse.json({ post: shapePost(postRows[0]), comments });
+    }
+
+    const rows = await db.execute<PostRow>(sql`
+      SELECT cp.id, p.handle AS handle, cp.title, cp.body, cp.combo_data,
+             cp.score, cp.comment_count, cp.created_at
+      FROM community_posts cp
+      JOIN profiles p ON p.user_id = cp.author_id
+      ORDER BY cp.created_at DESC
+      LIMIT ${LIST_CAP}
+    `);
+    return NextResponse.json({ posts: rows.map(shapePost) });
+  } catch (err) {
+    return safeError(err, 'Failed to load community');
   }
-  return NextResponse.json({ posts });
 }
 
 export async function POST(request: NextRequest) {
@@ -83,15 +117,12 @@ export async function POST(request: NextRequest) {
     const limited = await rateLimited(request, 'community', 100, 3600);
     if (limited) return limited;
 
-    const body = await request.json();
-    const { action, author } = body;
+    const guard = await requireGameUser(request.headers);
+    if ('error' in guard) return guard.error;
+    const me = guard.user;
 
-    if (!isAddr(author)) {
-      return NextResponse.json({ error: 'Invalid address' }, { status: 400 });
-    }
-    // Every write proves control of `author` — no posting/voting as someone else.
-    const auth = await verifyAuth(author, body.authMessage, body.authSignature);
-    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: 401 });
+    const body = await request.json();
+    const action = body?.action;
 
     if (action === 'post') {
       const title = cleanField(body.title, MAX_TITLE);
@@ -105,45 +136,74 @@ export async function POST(request: NextRequest) {
       if (!title || !archetype || !blade || !ratchet || !bit || !postBody) {
         return NextResponse.json({ error: 'Missing or invalid fields' }, { status: 400 });
       }
-      const id = randomUUID().replace(/-/g, '').slice(0, 10);
-      const post: Post = {
-        id, author, title, archetype, blade, ratchet, bit, body: postBody,
-        votes: 0, commentCount: 0, ts: Date.now(),
-      };
-      await kvSet(postKey(id), post);
-      await kvRPush(IDS_KEY, id);
-      return NextResponse.json({ success: true, post });
+      const comboData = { archetype, blade, ratchet, bit };
+      const rows = await db.execute<PostRow>(sql`
+        INSERT INTO community_posts (author_id, title, body, combo_data)
+        VALUES (${me.id}, ${title}, ${postBody}, ${JSON.stringify(comboData)}::jsonb)
+        RETURNING id, ${me.handle} AS handle, title, body, combo_data, score, comment_count, created_at
+      `);
+      return NextResponse.json({ success: true, post: shapePost(rows[0]) });
     }
 
     if (action === 'comment') {
       const postId = typeof body.postId === 'string' ? body.postId : '';
       const text = cleanField(body.text, MAX_COMMENT);
-      if (!/^[a-f0-9]{4,32}$/.test(postId) || !text) {
+      if (!UUID_RE.test(postId) || !text) {
         return NextResponse.json({ error: 'Missing or invalid fields' }, { status: 400 });
       }
-      const post = await kvGet<Post>(postKey(postId));
-      if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
-      const comment: Comment = { author, text, ts: Date.now() };
-      await kvRPush(commentsKey(postId), comment);
-      await kvSet(postKey(postId), { ...post, commentCount: post.commentCount + 1 });
+      const comment = await db.transaction(async (tx) => {
+        const exists = await tx.execute<{ id: string }>(sql`
+          SELECT id FROM community_posts WHERE id = ${postId} LIMIT 1
+        `);
+        if (!exists[0]) return null;
+        const inserted = await tx.execute<{ created_at: string }>(sql`
+          INSERT INTO community_comments (post_id, author_id, body)
+          VALUES (${postId}, ${me.id}, ${text})
+          RETURNING created_at
+        `);
+        await tx.execute(sql`
+          UPDATE community_posts
+          SET comment_count = comment_count + 1, updated_at = now()
+          WHERE id = ${postId}
+        `);
+        return { author: me.handle, text, ts: new Date(inserted[0].created_at).getTime() };
+      });
+      if (!comment) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
       return NextResponse.json({ success: true, comment });
     }
 
     if (action === 'vote') {
       const postId = typeof body.postId === 'string' ? body.postId : '';
-      if (!/^[a-f0-9]{4,32}$/.test(postId)) {
+      if (!UUID_RE.test(postId)) {
         return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
       }
-      const post = await kvGet<Post>(postKey(postId));
-      if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
-      // One vote per address — atomic claim.
-      const fresh = await kvSetNX(votedKey(postId, author));
-      if (!fresh) {
-        return NextResponse.json({ success: true, votes: post.votes, alreadyVoted: true });
+      const result = await db.transaction(async (tx) => {
+        const post = await tx.execute<{ score: number }>(sql`
+          SELECT score FROM community_posts WHERE id = ${postId} LIMIT 1
+        `);
+        if (!post[0]) return { notFound: true as const };
+        // One vote per user per post — the unique index makes a re-vote a no-op.
+        const claimed = await tx.execute<{ post_id: string }>(sql`
+          INSERT INTO community_votes (post_id, user_id, value)
+          VALUES (${postId}, ${me.id}, 1)
+          ON CONFLICT (post_id, user_id) DO NOTHING
+          RETURNING post_id
+        `);
+        if (!claimed[0]) {
+          return { votes: post[0].score, alreadyVoted: true as const };
+        }
+        const updated = await tx.execute<{ score: number }>(sql`
+          UPDATE community_posts
+          SET score = score + 1, updated_at = now()
+          WHERE id = ${postId}
+          RETURNING score
+        `);
+        return { votes: updated[0].score, alreadyVoted: false as const };
+      });
+      if ('notFound' in result) {
+        return NextResponse.json({ error: 'Post not found' }, { status: 404 });
       }
-      const updated = { ...post, votes: post.votes + 1 };
-      await kvSet(postKey(postId), updated);
-      return NextResponse.json({ success: true, votes: updated.votes });
+      return NextResponse.json({ success: true, votes: result.votes, alreadyVoted: result.alreadyVoted });
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

@@ -6,8 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useT } from '@/lib/i18n';
 import { useSparkBalance } from '@/hooks/useSparkBalance';
 import { useInventory } from '@/hooks/useInventory';
-import { useCurrentAccount } from '@mysten/dapp-kit';
-import { useAuthSig } from '@/lib/use-auth-sig';
+import { claimFaucet } from '@/lib/faucet';
 import { Beyblade } from '@/components/design/Beyblade';
 import { Stat, Eyebrow, SectionHead, ElementGlyph, Tag } from '@/components/design/atoms';
 import type { ElementId } from '@/components/design/tokens';
@@ -428,15 +427,8 @@ function FeatureMap() {
   );
 }
 
-function StarterPackBanner({
-  address,
-  onClaimed,
-}: {
-  address: string;
-  onClaimed: () => void;
-}) {
+function StarterPackBanner({ onClaimed }: { onClaimed: () => void }) {
   const t = useT();
-  const getAuthSig = useAuthSig();
   const [claiming, setClaiming] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -445,16 +437,12 @@ function StarterPackBanner({
     setClaiming(true);
     setError(null);
     try {
-      const auth = await getAuthSig();
-      const res = await fetch('/api/faucet', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(auth),
-      });
-      const data = await res.json();
-      if (!res.ok) setError(data.error);
-      else {
-        setResult(data.message);
+      // Session-cookie claim — no wallet, no signature (see lib/faucet).
+      const res = await claimFaucet();
+      if (!res.ok) {
+        setError(res.error ?? 'Faucet request failed.');
+      } else {
+        setResult(res.message ?? 'Claimed!');
         onClaimed();
       }
     } catch {
@@ -462,7 +450,7 @@ function StarterPackBanner({
     } finally {
       setClaiming(false);
     }
-  }, [getAuthSig, onClaimed]);
+  }, [onClaimed]);
 
   if (result) {
     return (
@@ -536,13 +524,13 @@ function StarterPackBanner({
 }
 
 function DashboardStrip() {
-  const { displayName } = useAuth();
-  const account = useCurrentAccount();
+  const { displayName, isAuthenticated } = useAuth();
   const t = useT();
   const { formatted: sparkBalance, refetch: refetchSpark } = useSparkBalance();
   const { blades, ratchets, bits, refetch: refetchInventory } = useInventory();
   const totalParts = blades.length + ratchets.length + bits.length;
-  const showStarter = account && Number(sparkBalance) === 0 && totalParts === 0;
+  // Offer the one-time starter grant to a signed-in account that has nothing yet.
+  const showStarter = isAuthenticated && Number(sparkBalance) === 0 && totalParts === 0;
 
   return (
     <section
@@ -565,10 +553,9 @@ function DashboardStrip() {
         </div>
       </div>
 
-      {showStarter && account && (
+      {showStarter && (
         <div style={{ marginBottom: 24 }}>
           <StarterPackBanner
-            address={account.address}
             onClaimed={() => {
               refetchSpark();
               refetchInventory();
@@ -610,8 +597,8 @@ export default function HomePage() {
     </>
   ) : (
     <>
-      <Link href="/passport" className="btn btn-primary">
-        Claim Spin Passport →
+      <Link href="/login" className="btn btn-primary">
+        Enter the Forge →
       </Link>
       <Link href="/tournament" className="btn btn-ghost">
         Watch Battle Demo

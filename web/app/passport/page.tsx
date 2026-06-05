@@ -1,9 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useCurrentAccount, useSuiClientQuery } from '@mysten/dapp-kit';
 import { Beyblade } from '@/components/design/Beyblade';
 import {
   Corners,
@@ -15,79 +14,31 @@ import {
   Tag,
 } from '@/components/design/atoms';
 import { BeyCard, type BeyCardData } from '@/components/design/BeyCard';
-import { PACKAGE_ID, ORIGINAL_PACKAGE_ID, PROFILE_PACKAGE_ID } from '@/lib/constants';
 import { useT } from '@/lib/i18n';
-import { funName } from '@/lib/fun-name';
 import { useGuest } from '@/lib/guest';
 import { GuestEntry } from '@/components/shared/Guest';
-import { useAuthSig } from '@/lib/use-auth-sig';
+import { useGameUser } from '@/hooks/useGameUser';
+import { useInventory } from '@/hooks/useInventory';
+import { useSpark } from '@/hooks/useSpark';
+import { usePassport } from '@/hooks/usePassport';
+import { api } from '@/lib/api-fetch';
+import type { PartObject } from '@/lib/inventory-types';
 
-// Common query options — force every visit to /passport to refetch so a
-// fresh mint from /register shows up immediately on navigation.
-const FRESH = { enabled: true, refetchOnMount: 'always' as const, staleTime: 0 };
+/**
+ * Aggregate the session player view: profile stats (DB), parts/Beys (DB
+ * inventory join) and SPARK (DB ledger). Replaces the old wallet-owned-object
+ * queries; same shape so the presentational cards below stay unchanged.
+ */
+function usePlayerData() {
+  const { blades, ratchets, bits, beys, isLoading: loadingInv, refetch: refetchInv } = useInventory();
+  const { profile, profileId, isLoading: loadingProfile, refetch: refetchProfile } = usePassport();
+  const { balance: spark, refetch: refetchSpark } = useSpark();
 
-function usePlayerData(address: string | undefined) {
-  // Parts/SPARK live under ORIGINAL_PACKAGE_ID (0xcb4ae0...)
-  const {
-    data: ownedObjects,
-    isLoading: loadingParts,
-    refetch: refetchParts,
-  } = useSuiClientQuery(
-    'getOwnedObjects',
-    {
-      owner: address ?? '',
-      filter: { Package: ORIGINAL_PACKAGE_ID },
-      options: { showType: true, showContent: true },
-    },
-    { ...FRESH, enabled: !!address },
-  );
-
-  // PlayerProfile lives under its own package (0x336b41...)
-  const {
-    data: profileObjects,
-    isLoading: loadingProfile,
-    refetch: refetchProfile,
-  } = useSuiClientQuery(
-    'getOwnedObjects',
-    {
-      owner: address ?? '',
-      filter: { Package: PROFILE_PACKAGE_ID },
-      options: { showType: true, showContent: true },
-    },
-    { ...FRESH, enabled: !!address },
-  );
-
-  const { data: sparkData, refetch: refetchSpark } = useSuiClientQuery(
-    'getBalance',
-    { owner: address ?? '', coinType: `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN` },
-    { ...FRESH, enabled: !!address },
-  );
-
-  const items = ownedObjects?.data ?? [];
-  const blades = items.filter((i) => i.data?.type?.includes('::blade::'));
-  const ratchets = items.filter((i) => i.data?.type?.includes('::ratchet::'));
-  const bits = items.filter((i) => i.data?.type?.includes('::bit::'));
-  const beys = items.filter((i) => i.data?.type?.includes('::bey::'));
-  const profiles = (profileObjects?.data ?? []).filter((i) =>
-    i.data?.type?.includes('::player_profile::PlayerProfile'),
-  );
-  const spark = Number(BigInt(sparkData?.totalBalance ?? '0')) / 1e9;
-
-  let profile: Record<string, unknown> | null = null;
-  let profileId = '';
-  if (profiles.length > 0) {
-    const content = profiles[0].data?.content;
-    if (content?.dataType === 'moveObject') {
-      profile = content.fields as Record<string, unknown>;
-      profileId = profiles[0].data?.objectId ?? '';
-    }
-  }
-
-  const refetchAll = () => {
-    refetchParts();
-    refetchProfile();
-    refetchSpark();
-  };
+  const refetch = useCallback(() => {
+    void refetchInv();
+    void refetchProfile();
+    void refetchSpark();
+  }, [refetchInv, refetchProfile, refetchSpark]);
 
   return {
     blades,
@@ -96,22 +47,22 @@ function usePlayerData(address: string | undefined) {
     beys,
     profile,
     profileId,
-    profileCount: profiles.length,
+    profileCount: profile ? 1 : 0,
     spark,
-    loadingParts: loadingParts || loadingProfile,
-    refetch: refetchAll,
+    loadingParts: loadingInv || loadingProfile,
+    refetch,
   };
 }
 
-function PassportCard({ address }: { address: string }) {
-  const { blades, ratchets, bits, beys, profile, profileId, spark } = usePlayerData(address);
+function PassportCard({ data, handle }: { data: ReturnType<typeof usePlayerData>; handle: string }) {
+  const { blades, ratchets, bits, beys, profile, profileId, spark } = data;
   const wins = Number(profile?.wins ?? 0);
   const losses = Number(profile?.losses ?? 0);
   const elo = Number(profile?.elo ?? 1000);
   const totalBattles = Number(profile?.total_battles ?? 0);
   const burstFinishes = Number(profile?.burst_finishes ?? 0);
-  const displayName = String(profile?.display_name ?? 'Unnamed');
-  const shortAddr = `${address.slice(0, 6)}...${address.slice(-4)}`;
+  const displayName = String(profile?.display_name ?? handle ?? 'Unnamed');
+  const shortAddr = handle ? `@${handle}` : '—';
 
   return (
     <div
@@ -276,14 +227,11 @@ function PassportCard({ address }: { address: string }) {
   );
 }
 
-function beyToCard(b: { data?: { objectId?: string; content?: unknown } | null }): BeyCardData | null {
-  const data = b.data;
-  if (!data?.objectId) return null;
-  const content = data.content as { dataType?: string; fields?: Record<string, unknown> } | undefined;
-  if (content?.dataType !== 'moveObject') return null;
-  const fields = content.fields ?? {};
+function beyToCard(b: PartObject): BeyCardData | null {
+  if (!b.objectId) return null;
+  const fields = b.fields ?? {};
   return {
-    objectId: data.objectId,
+    objectId: b.objectId,
     name: String(fields.name ?? 'Unnamed Rotor'),
     wins: Number(fields.wins ?? 0),
     losses: Number(fields.losses ?? 0),
@@ -371,9 +319,9 @@ function MyRotors({
   );
 }
 
-function OnboardingBanner({ address, onDone }: { address: string; onDone: () => void }) {
+function OnboardingBanner({ onDone }: { onDone: () => void }) {
   const t = useT();
-  const getAuthSig = useAuthSig();
+  const { user } = useGameUser();
   const [step, setStep] = useState<'idle' | 'creating' | 'claiming' | 'done'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -381,24 +329,16 @@ function OnboardingBanner({ address, onDone }: { address: string; onDone: () => 
     setStep('creating');
     setError(null);
     try {
-      // Sign once; reuse for both admin-signed calls (both verify this address).
-      const auth = await getAuthSig();
-      const pRes = await fetch('/api/create-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...auth, displayName: funName(address) }),
-      });
-      const pData = await pRes.json();
-      if (!pRes.ok) throw new Error(pData.error);
+      // Session-authenticated: identity comes from the session. Seed the display
+      // name from the auto-generated handle; the starter grant is server-side.
+      const pRes = await api('/api/create-profile', { displayName: user?.handle ?? 'Player' });
+      const pData = await pRes.json().catch(() => ({}));
+      if (!pRes.ok) throw new Error(pData.error ?? 'Failed');
 
       setStep('claiming');
-      const cRes = await fetch('/api/claim-starter', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(auth),
-      });
-      const cData = await cRes.json();
-      if (!cRes.ok) throw new Error(cData.error);
+      const cRes = await api('/api/claim-starter', {});
+      const cData = await cRes.json().catch(() => ({}));
+      if (!cRes.ok) throw new Error(cData.error ?? 'Failed');
 
       setStep('done');
       setTimeout(onDone, 1500);
@@ -406,7 +346,7 @@ function OnboardingBanner({ address, onDone }: { address: string; onDone: () => 
       setError(err instanceof Error ? err.message : 'Failed');
       setStep('idle');
     }
-  }, [getAuthSig, address, onDone]);
+  }, [onDone, user]);
 
   return (
     <div className="panel" style={{ padding: 28, textAlign: 'center', maxWidth: 500, margin: '0 auto' }}>
@@ -610,24 +550,25 @@ function ModeCard({ tag, kanji, title, sub, body, accent, recommended }: ModeCar
 }
 
 export default function PassportPage() {
-  const account = useCurrentAccount();
+  const { user } = useGameUser();
   const [refreshKey, setRefreshKey] = useState(0);
   const { isGuest } = useGuest();
-  const { profile, beys, loadingParts, refetch } = usePlayerData(account?.address);
+  const playerData = usePlayerData();
+  const { profile, beys, loadingParts, refetch } = playerData;
   const t = useT();
 
   const isZh = t.nav.home === '首頁';
 
-  if (!account && !isGuest) {
+  if (!user && !isGuest) {
     return (
       <>
         <PageHeader
           eyebrow={t.passport.pageEyebrow}
           title={
             isZh ? (
-              <>連接錢包以查看你的<span style={{ color: 'var(--gold)' }}>陀螺護照</span></>
+              <>登入以查看你的<span style={{ color: 'var(--gold)' }}>陀螺護照</span></>
             ) : (
-              <>Connect wallet to view your <span style={{ color: 'var(--gold)' }}>Passport.</span></>
+              <>Sign in to view your <span style={{ color: 'var(--gold)' }}>Passport.</span></>
             )
           }
           sub={t.collection.connectPrompt}
@@ -642,7 +583,7 @@ export default function PassportPage() {
     );
   }
 
-  if (account && !loadingParts && !profile) {
+  if (user && !loadingParts && !profile) {
     return (
       <>
         <PageHeader
@@ -659,7 +600,6 @@ export default function PassportPage() {
         />
         <Section>
           <OnboardingBanner
-            address={account.address}
             onDone={() => {
               setRefreshKey((k) => k + 1);
               refetch();
@@ -695,14 +635,14 @@ export default function PassportPage() {
           }}
         >
           <div style={{ display: 'grid', placeItems: 'center' }}>
-            {account ? (
-              <PassportCard address={account.address} key={refreshKey} />
+            {user ? (
+              <PassportCard data={playerData} handle={user.handle} key={refreshKey} />
             ) : (
               <div className="panel" style={{ padding: 40, textAlign: 'center', maxWidth: 320 }}>
                 <Corners color="var(--gold)" />
                 <div style={{ fontSize: 40, marginBottom: 12 }}>證</div>
                 <p className="muted" style={{ fontSize: 14, lineHeight: 1.6, margin: 0 }}>
-                  {isZh ? '連接錢包後,這裡會顯示你的鏈上陀螺護照(戰績、ELO、終結技)。' : 'Connect a wallet to see your on-chain passport here (record, ELO, finishes).'}
+                  {isZh ? '登入後,這裡會顯示你的陀螺護照(戰績、ELO、終結技)。' : 'Sign in to see your passport here (record, ELO, finishes).'}
                 </p>
               </div>
             )}
@@ -767,7 +707,7 @@ export default function PassportPage() {
           </div>
         </div>
 
-        {account && <MyRotors beys={beys} />}
+        {user && <MyRotors beys={beys} />}
 
         <RegistrationFlow />
 

@@ -41,6 +41,20 @@ module spinforge::battle_record {
         score_b: u8,
     }
 
+    /// Web2-hybrid: an already-committed record minted by the platform relay
+    /// after BOTH participants confirmed off-chain (in Postgres). Carries the
+    /// pseudonymous subjects + outbox `operation_id` for attribution/indexing.
+    public struct BattleRecordCommittedFor has copy, drop {
+        record_id: ID,
+        player_a_subject: address,
+        player_b_subject: address,
+        winner_subject: address,
+        finish_type: u8,
+        score_a: u8,
+        score_b: u8,
+        operation_id: vector<u8>,
+    }
+
     // H-4: gated by &AdminCap so only the backend (which has already verified
     // the submitter is a participant via wallet signature at the API layer) can
     // mint a BattleRecord. Arbitrary players can no longer forge records in
@@ -78,6 +92,56 @@ module spinforge::battle_record {
             record_id: object::id(&record),
             player_a,
             player_b,
+        });
+
+        record
+    }
+
+    /// Web2-hybrid: mint a record that is ALREADY committed. Both participant
+    /// confirmations happened off-chain in Postgres (each session-authenticated),
+    /// so this single AdminCap-gated relay call records the final, agreed result.
+    /// The on-chain owners of everything are the platform custody; `*_subject`
+    /// are the pseudonymous attribution addresses and `operation_id` ties back to
+    /// the outbox row. Returns the record for the relay to transfer to custody.
+    public fun create_committed(
+        _admin: &AdminCap,
+        player_a_subject: address,
+        player_b_subject: address,
+        rotor_a: ID,
+        rotor_b: ID,
+        winner_subject: address,
+        finish_type: u8,
+        score_a: u8,
+        score_b: u8,
+        operation_id: vector<u8>,
+        clock: &sui::clock::Clock,
+        ctx: &mut TxContext,
+    ): BattleRecord {
+        let record = BattleRecord {
+            id: object::new(ctx),
+            player_a: player_a_subject,
+            player_b: player_b_subject,
+            rotor_a,
+            rotor_b,
+            winner: winner_subject,
+            finish_type,
+            score_a,
+            score_b,
+            confirmed_by_a: true,
+            confirmed_by_b: true,
+            committed: true,
+            timestamp: sui::clock::timestamp_ms(clock),
+        };
+
+        event::emit(BattleRecordCommittedFor {
+            record_id: object::id(&record),
+            player_a_subject,
+            player_b_subject,
+            winner_subject,
+            finish_type,
+            score_a,
+            score_b,
+            operation_id,
         });
 
         record

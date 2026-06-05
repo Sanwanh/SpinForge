@@ -1,81 +1,61 @@
 'use client';
 
-import { useCurrentAccount, useSuiClientQuery } from '@mysten/dapp-kit';
-import { useMemo } from 'react';
-import { ORIGINAL_PACKAGE_ID } from '@/lib/constants';
+import { useCallback, useEffect, useState } from 'react';
+import { api } from '@/lib/api-fetch';
+import { useGameUser } from '@/hooks/useGameUser';
+import {
+  type InventoryResponse,
+  type PartObject,
+  type SortedInventory,
+  sortInventory,
+} from '@/lib/inventory-types';
 
-export interface PartObject {
-  objectId: string;
-  type: 'blade' | 'ratchet' | 'bit' | 'bey';
-  fields: Record<string, unknown>;
-}
+export type { PartObject } from '@/lib/inventory-types';
 
-function classifyType(typeStr: string): PartObject['type'] | null {
-  if (typeStr.includes('::blade::Blade')) return 'blade';
-  if (typeStr.includes('::ratchet::Ratchet')) return 'ratchet';
-  if (typeStr.includes('::bit::Bit')) return 'bit';
-  if (typeStr.includes('::bey::Bey')) return 'bey';
-  return null;
-}
+const EMPTY: SortedInventory = { blades: [], ratchets: [], bits: [], beys: [] };
 
+/**
+ * Session + DB-backed inventory. Fetches `GET /api/inventory` (the server joins
+ * DB ownership with on-chain object content and returns each asset's Move
+ * `fields`), then buckets the flat list into blade/ratchet/bit/bey arrays so the
+ * existing visual components keep the same data shape they had under wallet
+ * queries. No wallet connection is required — identity comes from the session
+ * cookie. Guests (no session) get an empty inventory.
+ */
 export function useInventory() {
-  const account = useCurrentAccount();
+  const { user, isPending: sessionPending } = useGameUser();
+  const [parts, setParts] = useState<SortedInventory>(EMPTY);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  const { data, isLoading, error, refetch } = useSuiClientQuery(
-    'getOwnedObjects',
-    {
-      owner: account?.address ?? '',
-      // Sui type identity is bound to the ORIGINAL defining package, not upgraded versions.
-      // All Blade/Ratchet/Bit/Bey/SPARK_TOKEN types live under ORIGINAL_PACKAGE_ID.
-      filter: { Package: ORIGINAL_PACKAGE_ID },
-      options: { showContent: true, showType: true },
-    },
-    {
-      enabled: !!account?.address,
-      refetchOnMount: 'always',
-      staleTime: 0,
+  const refetch = useCallback(async () => {
+    if (!user) {
+      setParts(EMPTY);
+      return;
     }
-  );
-
-  const parts = useMemo(() => {
-    if (!data?.data) return { blades: [], ratchets: [], bits: [], beys: [] };
-
-    const blades: PartObject[] = [];
-    const ratchets: PartObject[] = [];
-    const bits: PartObject[] = [];
-    const beys: PartObject[] = [];
-
-    for (const item of data.data) {
-      const content = item.data?.content;
-      if (content?.dataType !== 'moveObject') continue;
-
-      const partType = classifyType(content.type);
-      if (!partType) continue;
-
-      const part: PartObject = {
-        objectId: item.data?.objectId ?? '',
-        type: partType,
-        fields: (content.fields as Record<string, unknown>) ?? {},
-      };
-
-      switch (partType) {
-        case 'blade':
-          blades.push(part);
-          break;
-        case 'ratchet':
-          ratchets.push(part);
-          break;
-        case 'bit':
-          bits.push(part);
-          break;
-        case 'bey':
-          beys.push(part);
-          break;
-      }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await api('/api/inventory');
+      if (!res.ok) throw new Error(`Inventory fetch failed (${res.status})`);
+      const data = (await res.json()) as InventoryResponse;
+      setParts(sortInventory(data.items ?? []));
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Inventory fetch failed'));
+      setParts(EMPTY);
+    } finally {
+      setIsLoading(false);
     }
+  }, [user]);
 
-    return { blades, ratchets, bits, beys };
-  }, [data]);
+  useEffect(() => {
+    if (sessionPending) return;
+    void refetch();
+  }, [sessionPending, refetch]);
 
-  return { ...parts, isLoading, error, refetch };
+  return { ...parts, isLoading: isLoading || sessionPending, error, refetch };
 }
+
+export type { PartObject as PartObjectType } from '@/lib/inventory-types';
+export type { SortedInventory };
+export type InventoryPart = PartObject;

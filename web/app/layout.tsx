@@ -6,6 +6,14 @@ import { Navbar } from '@/components/shared/Navbar';
 import { Footer } from '@/components/shared/Footer';
 import { GuestBanner } from '@/components/shared/Guest';
 
+// Disable static pre-rendering for all routes. better-auth/react is a pure-ESM
+// package externalised as an async webpack module. Async modules that haven't
+// settled when the build-time static-generation worker runs cause downstream
+// component exports to be `undefined`, breaking every page. Opting out of
+// static generation makes routes render at request time, by which point all
+// async modules in the running server have fully resolved.
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'SpinForge — Ancient Steel. On-Chain Spin.',
   description:

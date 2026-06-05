@@ -17,11 +17,15 @@ import { decodeSuiPrivateKey } from '@mysten/sui/cryptography';
 // Until those env vars are set, both roles fall back to ADMIN_PRIVATE_KEY, so
 // behavior is unchanged. Long-term, replace `decodeSuiPrivateKey(env)` here with
 // a KMS/HSM-backed signer so the raw key never enters process.env at all.
-export type SignerRole = 'minter' | 'recorder';
+export type SignerRole = 'minter' | 'recorder' | 'custodian';
 
 function rawKey(role: SignerRole): string {
   const specific =
-    role === 'minter' ? process.env.MINTER_PRIVATE_KEY : process.env.RECORDER_PRIVATE_KEY;
+    role === 'minter'
+      ? process.env.MINTER_PRIVATE_KEY
+      : role === 'recorder'
+        ? process.env.RECORDER_PRIVATE_KEY
+        : process.env.CUSTODIAN_PRIVATE_KEY;
   return specific ?? process.env.ADMIN_PRIVATE_KEY ?? '';
 }
 

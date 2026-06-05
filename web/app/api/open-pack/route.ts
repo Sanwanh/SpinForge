@@ -1,105 +1,36 @@
+// Open a pack — web2-hybrid flow (plan section C/E).
+// Identity comes from the Better Auth session only (never request JSON). SPARK is
+// an off-chain DB ledger: we reserve 100 SPARK, relay `pack::open_pack_for` to
+// mint 5 parts into platform custody, attribute each part to the user in
+// `ownership`, then settle the reservation. The transactional outbox
+// (chain_operations) keys the whole flow on an Idempotency-Key so a retry never
+// double-charges or double-mints.
+
 import { NextRequest, NextResponse } from 'next/server';
-import { Transaction } from '@mysten/sui/transactions';
-import { kvSetNX, kvDel } from '@/lib/kv';
+import { requireGameUser } from '@/lib/server-user';
+import { reserveOp, markOp } from '@/lib/chain-ops';
+import { reserveSpark, settleReservation, releaseReservation, getBalance } from '@/lib/economy';
+import { recordMint } from '@/lib/ownership';
+import { submitRelay, PLATFORM_CUSTODY } from '@/lib/relay';
 import { isSameOrigin, safeError, rateLimited, adminBudgetExceeded } from '@/lib/api-guard';
-import { loadSigner } from '@/lib/admin-signer';
+import { PACKAGE_ID, SPARK_TREASURY_CAP_ID, GAME_CONFIG_ID, SUI_RANDOM_ID } from '@/lib/constants';
 
-// Latest upgraded package (where executable Move code lives).
-const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID ?? '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
-// SPARK_TOKEN type identity is bound to the original defining package, so balance
-// queries use the original even though Move calls use the latest version.
-const ORIGINAL_PACKAGE_ID = '0x79e8552bfb9b9cf61b3534a03061b222f022671be4b384efa55d557586ed2110';
-const SPARK_TYPE = `${ORIGINAL_PACKAGE_ID}::spark_token::SPARK_TOKEN`;
-const SPARK_TREASURY_CAP = '0x095b18a88100dc11f9f1ec3047adf5ac0e497e03d1f7e3b5f50fc2dad9569e69';
-// M-1: open_pack asserts the recipient is not banned and mints parts directly to them.
-const GAME_CONFIG = '0xa72dad0e0757d98fad022feae4dd64f5281ad89db246c4377f714080e26ab41a';
-const SUI_RANDOM = '0x8';
-const RPC_URL = 'https://fullnode.testnet.sui.io:443';
-const PACK_COST = 100_000_000_000n;
+const PACK_COST_SPARK = 100;
+const PACK_REASON = 'open_pack';
 
-async function rpc(method: string, params: unknown[]) {
-  const res = await fetch(RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  });
-  return res.json();
+// Blade / Ratchet / Bit are the loose parts minted by a pack.
+function partType(objectType: string): string | null {
+  if (objectType.includes('::blade::')) return 'blade';
+  if (objectType.includes('::ratchet::')) return 'ratchet';
+  if (objectType.includes('::bit::')) return 'bit';
+  return null;
 }
 
-function isPart(objectType: string | undefined): boolean {
-  return (
-    !!objectType &&
-    (objectType.includes('::blade::') ||
-      objectType.includes('::ratchet::') ||
-      objectType.includes('::bit::'))
-  );
-}
-
-interface BalanceChange {
-  owner?: { AddressOwner?: string };
-  coinType?: string;
-  amount?: string;
-}
-
-// Verify a wallet player's SPARK payment to the treasury, with replay protection.
-async function verifyPayment(
-  digest: string,
-  payer: string,
-  treasury: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  const usedKey = `used_payment:${digest}`;
-  // Atomically reserve the digest BEFORE the (0–3.2s) RPC window, so two
-  // concurrent requests with the same digest can't both pass. Release the
-  // reservation on any verification failure so a legit payment that hit a
-  // transient RPC error isn't permanently locked out. (TOCTOU fix)
-  if (!(await kvSetNX(usedKey, 60 * 60 * 24 * 7))) {
-    return { ok: false, error: 'This payment was already used.' };
-  }
-
-  // The tx may not be indexed for query the instant it executes — retry briefly.
-  let tx: Record<string, unknown> | null = null;
-  for (let i = 0; i < 4; i++) {
-    const res = await rpc('sui_getTransactionBlock', [
-      digest,
-      { showBalanceChanges: true, showInput: true, showEffects: true },
-    ]);
-    if (res.result) {
-      tx = res.result;
-      break;
-    }
-    await new Promise((r) => setTimeout(r, 800));
-  }
-  if (!tx) {
-    await kvDel(usedKey);
-    return { ok: false, error: 'Payment transaction not found.' };
-  }
-
-  const effects = tx.effects as { status?: { status?: string } } | undefined;
-  if (effects?.status?.status !== 'success') {
-    await kvDel(usedKey);
-    return { ok: false, error: 'Payment transaction did not succeed.' };
-  }
-
-  const sender = (tx.transaction as { data?: { sender?: string } })?.data?.sender;
-  if (sender !== payer) {
-    await kvDel(usedKey);
-    return { ok: false, error: 'Payment sender does not match.' };
-  }
-
-  const changes = (tx.balanceChanges as BalanceChange[]) ?? [];
-  const paid = changes.some(
-    (c) =>
-      c.coinType === SPARK_TYPE &&
-      c.owner?.AddressOwner === treasury &&
-      BigInt(c.amount ?? '0') >= PACK_COST,
-  );
-  if (!paid) {
-    await kvDel(usedKey);
-    return { ok: false, error: 'Payment did not reach the treasury.' };
-  }
-
-  // Reservation already holds the digest for 7 days — no second write needed.
-  return { ok: true };
+// Idempotency-Key header is the outbox dedupe key; fall back to a per-request key
+// (still safe — a missing header just means no client-driven retry coalescing).
+function idemKey(request: NextRequest, userId: string): string {
+  const header = request.headers.get('idempotency-key');
+  return header && header.length > 0 ? `open-pack:${userId}:${header}` : `open-pack:${crypto.randomUUID()}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -109,90 +40,81 @@ export async function POST(request: NextRequest) {
     }
     const limited = await rateLimited(request, 'open-pack', 30, 3600);
     if (limited) return limited;
-    // H-RT-2: global hourly ceiling on admin-signed pack mints.
     const overBudget = await adminBudgetExceeded('open-pack', 600, 3600);
     if (overBudget) return overBudget;
-    const { address, paymentDigest } = await request.json();
 
-    if (!address || typeof address !== 'string') {
-      return NextResponse.json({ error: 'Missing address' }, { status: 400 });
-    }
+    const auth = await requireGameUser(request.headers);
+    if ('error' in auth) return auth.error;
+    const { user } = auth;
 
-    // H-RT-3: minter role (SPARK TreasuryCap) once keys are split. NOTE: the pack
-    // payment is verified to have reached this signer's address (treasury), so if
-    // MINTER_PRIVATE_KEY is provisioned, the frontend payment target must point to
-    // the minter address too — see docs/KEY_ROTATION_RUNBOOK.md.
-    const { keypair, address: admin } = loadSigner('minter');
-
-    // H-5~H-8: a verified on-chain payment is REQUIRED for every pack. The old
-    // "gas-free" branch only checked balance and never deducted, so anyone
-    // holding >=100 SPARK could open unlimited free packs. verifyPayment also
-    // proves the payer == address (signed the transfer) and blocks replay.
-    if (typeof paymentDigest !== 'string' || paymentDigest.length === 0) {
-      return NextResponse.json({ error: 'Payment required to open a pack.' }, { status: 402 });
-    }
-    const v = await verifyPayment(paymentDigest, address, admin);
-    if (!v.ok) {
-      return NextResponse.json({ error: v.error }, { status: 400 });
-    }
-
-    const { SuiJsonRpcClient } = await import('@mysten/sui/jsonRpc');
-    const client = new SuiJsonRpcClient({ url: RPC_URL, network: 'testnet' });
-
-    // Mint the pack cost fresh and feed it straight into open_pack, which burns it.
-    // Net effect on the admin treasury is zero, so packs never deplete the admin.
-    // open_pack mints the 5 parts directly to `address` (the verified payer), so
-    // no second admin->player forwarding tx is needed.
-    const tx = new Transaction();
-    tx.setSender(admin);
-    const payment = tx.moveCall({
-      target: `${PACKAGE_ID}::spark_token::mint_coin`,
-      arguments: [tx.object(SPARK_TREASURY_CAP), tx.pure.u64(PACK_COST)],
-    });
-    tx.moveCall({
-      target: `${PACKAGE_ID}::pack::open_pack`,
-      arguments: [
-        payment,
-        tx.object(SPARK_TREASURY_CAP),
-        tx.object(GAME_CONFIG),
-        tx.pure.address(address),
-        tx.object(SUI_RANDOM),
-      ],
+    // 1. Reserve the outbox row + debit SPARK BEFORE any chain write.
+    const operationId = await reserveOp({
+      idempotencyKey: idemKey(request, user.id),
+      userId: user.id,
+      action: PACK_REASON,
+      request: { cost: PACK_COST_SPARK },
     });
 
-    const bytes = await tx.build({ client });
-    const { signature } = await keypair.signTransaction(bytes);
-
-    const execResult = await rpc('sui_executeTransactionBlock', [
-      Buffer.from(bytes).toString('base64'),
-      [signature],
-      { showEffects: true, showObjectChanges: true },
-      'WaitForLocalExecution',
-    ]);
-
-    if (execResult.error) {
-      return NextResponse.json({ error: execResult.error.message }, { status: 500 });
-    }
-
-    const status = execResult.result?.effects?.status?.status;
-    if (status !== 'success') {
-      return NextResponse.json({ error: `Pack open failed: ${status}` }, { status: 500 });
-    }
-
-    const createdParts: string[] = [];
-    for (const change of execResult.result?.objectChanges ?? []) {
-      if (change.type === 'created' && isPart(change.objectType)) {
-        createdParts.push(change.objectId);
+    try {
+      await reserveSpark(user.id, PACK_COST_SPARK, PACK_REASON, operationId);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'INSUFFICIENT_FUNDS') {
+        await markOp(operationId, { state: 'failed', lastError: 'INSUFFICIENT_FUNDS' });
+        return NextResponse.json({ error: 'Not enough SPARK to open a pack.' }, { status: 402 });
       }
+      throw err;
     }
 
-    return NextResponse.json({
-      success: true,
-      digest: execResult.result?.digest,
-      parts: createdParts.length,
-      partIds: createdParts,
-      message: `Pack opened! ${createdParts.length} parts transferred to your wallet.`,
-    });
+    // 2. Relay the mint to platform custody. On failure, release the reservation.
+    let relay;
+    try {
+      relay = await submitRelay('minter', (tx) => {
+        tx.moveCall({
+          target: `${PACKAGE_ID}::pack::open_pack_for`,
+          arguments: [
+            tx.object(SPARK_TREASURY_CAP_ID),
+            tx.object(GAME_CONFIG_ID),
+            tx.pure.address(user.chainSubject),
+            tx.pure.vector('u8', Array.from(Buffer.from(operationId))),
+            tx.object(SUI_RANDOM_ID),
+          ],
+        });
+      });
+    } catch (err) {
+      await releaseReservation(operationId);
+      await markOp(operationId, {
+        state: 'reconcile_needed',
+        lastError: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+
+    // 3. Attribute every minted part to the user, then settle the reservation.
+    const parts = relay.created.filter((c) => partType(c.objectType) !== null);
+    for (const part of parts) {
+      await recordMint(user.id, part.objectId, partType(part.objectType)!, {
+        txDigest: relay.digest,
+        operationId,
+        chainOwner: PLATFORM_CUSTODY,
+        acquiredVia: PACK_REASON,
+      });
+    }
+    await settleReservation(operationId);
+    await markOp(operationId, { state: 'db_applied', txDigest: relay.digest });
+
+    const balance = await getBalance(user.id);
+    return NextResponse.json(
+      {
+        success: true,
+        operationId,
+        digest: relay.digest,
+        parts: parts.length,
+        partIds: parts.map((p) => p.objectId),
+        balance,
+        message: `Pack opened! ${parts.length} parts added to your collection.`,
+      },
+      { status: 202 },
+    );
   } catch (err) {
     return safeError(err, 'Pack open failed');
   }
