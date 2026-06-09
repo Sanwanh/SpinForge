@@ -26,9 +26,12 @@ if (process.env.APPLE_CLIENT_ID && process.env.APPLE_CLIENT_SECRET) {
 function resolveBaseUrl(): string {
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
   if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+  // Production: the stable project domain. Preview/other Vercel envs: that
+  // deployment's own URL, so session cookies match the host being visited.
+  if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_PROJECT_PRODUCTION_URL) {
     return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
   }
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return 'http://localhost:3000';
 }
 
