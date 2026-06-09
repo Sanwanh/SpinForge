@@ -29,6 +29,11 @@ function AppleMark({ size = 16 }: { size?: number }) {
   );
 }
 
+// Auth methods are gated until their backends are provisioned (Google/Apple OAuth
+// creds, and an email provider for magic links). Flip to true to re-enable.
+const SOCIAL_AUTH_ENABLED = false;
+const MAGIC_LINK_ENABLED = false;
+
 type Status = { kind: 'idle' | 'loading' | 'ok' | 'error'; message?: string };
 
 export default function LoginPage() {
@@ -197,34 +202,38 @@ export default function LoginPage() {
             : isZh ? '建立帳號' : 'Create Account'}
         </h1>
         <p className="muted" style={{ fontSize: 12, lineHeight: 1.5, margin: '0 0 22px' }}>
-          {isZh ? '使用電子郵件或社群帳號開始遊玩。' : 'Use email or a social account to start playing.'}
+          {isZh ? '使用電子郵件開始遊玩。' : 'Sign in with your email to start playing.'}
         </p>
 
         {/* Social */}
-        <button
-          type="button"
-          onClick={() => handleSocial('google')}
-          style={{ ...socialBtnStyle, background: '#fff', border: 'none', color: '#1f1f1f', marginBottom: 10 }}
-        >
-          <GoogleMark size={16} />
-          {isZh ? '使用 Google 登入' : 'Continue with Google'}
-        </button>
-        <button
-          type="button"
-          onClick={() => handleSocial('apple')}
-          style={{ ...socialBtnStyle, background: '#000', border: '1px solid var(--border)', color: '#fff', marginBottom: 18 }}
-        >
-          <AppleMark size={16} />
-          {isZh ? '使用 Apple 登入' : 'Continue with Apple'}
-        </button>
+        {SOCIAL_AUTH_ENABLED && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleSocial('google')}
+              style={{ ...socialBtnStyle, background: '#fff', border: 'none', color: '#1f1f1f', marginBottom: 10 }}
+            >
+              <GoogleMark size={16} />
+              {isZh ? '使用 Google 登入' : 'Continue with Google'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSocial('apple')}
+              style={{ ...socialBtnStyle, background: '#000', border: '1px solid var(--border)', color: '#fff', marginBottom: 18 }}
+            >
+              <AppleMark size={16} />
+              {isZh ? '使用 Apple 登入' : 'Continue with Apple'}
+            </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 18px' }}>
-          <span style={{ flex: 1, height: 1, background: 'var(--border-soft)' }} />
-          <span className="t-mono" style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.2em' }}>
-            {isZh ? '或使用電子郵件' : 'OR WITH EMAIL'}
-          </span>
-          <span style={{ flex: 1, height: 1, background: 'var(--border-soft)' }} />
-        </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 18px' }}>
+              <span style={{ flex: 1, height: 1, background: 'var(--border-soft)' }} />
+              <span className="t-mono" style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.2em' }}>
+                {isZh ? '或使用電子郵件' : 'OR WITH EMAIL'}
+              </span>
+              <span style={{ flex: 1, height: 1, background: 'var(--border-soft)' }} />
+            </div>
+          </>
+        )}
 
         {/* Email + password */}
         <form onSubmit={handleEmailPassword} style={{ display: 'grid', gap: 12 }}>
@@ -321,40 +330,42 @@ export default function LoginPage() {
         </button>
 
         {/* Magic link */}
-        <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--border-soft)' }}>
-          <div className="t-mono" style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.14em', marginBottom: 8 }}>
-            {isZh ? '或寄送魔法連結' : 'OR SEND A MAGIC LINK'}
+        {MAGIC_LINK_ENABLED && (
+          <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--border-soft)' }}>
+            <div className="t-mono" style={{ fontSize: 9, color: 'var(--text-dim)', letterSpacing: '0.14em', marginBottom: 8 }}>
+              {isZh ? '或寄送魔法連結' : 'OR SEND A MAGIC LINK'}
+            </div>
+            <form onSubmit={handleMagicLink} style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="email"
+                required
+                value={magicEmail}
+                onChange={(e) => setMagicEmail(e.target.value)}
+                placeholder="you@example.com"
+                style={{ ...inputStyle, flex: 1 }}
+                autoComplete="email"
+              />
+              <button
+                type="submit"
+                className="btn btn-ghost"
+                disabled={magicStatus.kind === 'loading'}
+                style={{ padding: '0 16px', fontSize: 12, whiteSpace: 'nowrap' }}
+              >
+                {magicStatus.kind === 'loading' ? t.common.loading : isZh ? '寄送' : 'Send'}
+              </button>
+            </form>
+            {magicStatus.kind === 'ok' && (
+              <p className="t-mono" style={{ marginTop: 10, color: 'var(--wood)', fontSize: 11, lineHeight: 1.5 }}>
+                {magicStatus.message}
+              </p>
+            )}
+            {magicStatus.kind === 'error' && (
+              <p className="t-mono" style={{ marginTop: 10, color: 'var(--blood)', fontSize: 11, lineHeight: 1.5 }}>
+                {magicStatus.message}
+              </p>
+            )}
           </div>
-          <form onSubmit={handleMagicLink} style={{ display: 'flex', gap: 8 }}>
-            <input
-              type="email"
-              required
-              value={magicEmail}
-              onChange={(e) => setMagicEmail(e.target.value)}
-              placeholder="you@example.com"
-              style={{ ...inputStyle, flex: 1 }}
-              autoComplete="email"
-            />
-            <button
-              type="submit"
-              className="btn btn-ghost"
-              disabled={magicStatus.kind === 'loading'}
-              style={{ padding: '0 16px', fontSize: 12, whiteSpace: 'nowrap' }}
-            >
-              {magicStatus.kind === 'loading' ? t.common.loading : isZh ? '寄送' : 'Send'}
-            </button>
-          </form>
-          {magicStatus.kind === 'ok' && (
-            <p className="t-mono" style={{ marginTop: 10, color: 'var(--wood)', fontSize: 11, lineHeight: 1.5 }}>
-              {magicStatus.message}
-            </p>
-          )}
-          {magicStatus.kind === 'error' && (
-            <p className="t-mono" style={{ marginTop: 10, color: 'var(--blood)', fontSize: 11, lineHeight: 1.5 }}>
-              {magicStatus.message}
-            </p>
-          )}
-        </div>
+        )}
 
         <div style={{ marginTop: 20, textAlign: 'center' }}>
           <Link
