@@ -3,6 +3,7 @@
   "framework": "nextjs",
   "buildCommand": "pnpm build",
   "installCommand": "pnpm install",
+  "regions": ["sin1"],
   "functions": {
     "app/api/**/route.ts": {
       "maxDuration": 30
