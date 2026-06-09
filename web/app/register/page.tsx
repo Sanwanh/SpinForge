@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useState, useCallback } from 'react';
+import Link from 'next/link';
 import { PageHeader, Section, Tag, Corners } from '@/components/design/atoms';
 import { useT } from '@/lib/i18n';
 import { useGameUser } from '@/hooks/useGameUser';
@@ -237,7 +238,7 @@ function SectionEyebrow({
 }
 
 export default function RegisterPage() {
-  const { user } = useGameUser();
+  const { user, isPending } = useGameUser();
   const t = useT();
   const isZh = t.nav.home === '首頁';
 
@@ -281,15 +282,34 @@ export default function RegisterPage() {
     }
   }, [user, blade, spirit, beyType, spin, prong, height, bit, bitCat]);
 
-  // ─── Empty state ───
-  if (!user) {
+  // ─── Loading state ───
+  if (isPending) {
     return (
       <PageHeader
         eyebrow={isZh ? '註冊陀螺 · REGISTER ROTOR' : 'REGISTER ROTOR · 註冊陀螺'}
-        title={<>{isZh ? '登入以註冊你的陀螺' : 'Sign in to register your top'}</>}
-        sub={isZh ? '把你手上的實體陀螺鑄到 Sui 鏈上。' : 'Mint your physical Beyblade to Sui.'}
+        title={<>{isZh ? '載入中…' : 'Loading…'}</>}
+        sub={isZh ? '正在確認你的登入狀態。' : 'Checking your session.'}
         kanjiBg="鑄"
       />
+    );
+  }
+
+  // ─── Empty state ───
+  if (!user) {
+    return (
+      <>
+        <PageHeader
+          eyebrow={isZh ? '註冊陀螺 · REGISTER ROTOR' : 'REGISTER ROTOR · 註冊陀螺'}
+          title={<>{isZh ? '登入以註冊你的陀螺' : 'Sign in to register your top'}</>}
+          sub={isZh ? '把你手上的實體陀螺鑄到 Sui 鏈上。' : 'Mint your physical Beyblade to Sui.'}
+          kanjiBg="鑄"
+        />
+        <div style={{ textAlign: 'center', marginTop: 24 }}>
+          <Link href="/login" style={{ color: 'var(--gold)', letterSpacing: '0.08em' }}>
+            {isZh ? '前往登入 →' : 'Go to sign in →'}
+          </Link>
+        </div>
+      </>
     );
   }
 

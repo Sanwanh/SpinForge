@@ -550,7 +550,7 @@ function ModeCard({ tag, kanji, title, sub, body, accent, recommended }: ModeCar
 }
 
 export default function PassportPage() {
-  const { user } = useGameUser();
+  const { user, isPending } = useGameUser();
   const [refreshKey, setRefreshKey] = useState(0);
   const { isGuest } = useGuest();
   const playerData = usePlayerData();
@@ -558,6 +558,16 @@ export default function PassportPage() {
   const t = useT();
 
   const isZh = t.nav.home === '首頁';
+
+  if (isPending) {
+    return (
+      <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center' }}>
+        <div className="t-mono" style={{ color: 'var(--text-dim)', letterSpacing: '0.14em' }}>
+          {isZh ? '載入中…' : 'Loading…'}
+        </div>
+      </div>
+    );
+  }
 
   if (!user && !isGuest) {
     return (
