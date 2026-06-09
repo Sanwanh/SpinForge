@@ -49,3 +49,5 @@ register-*.png
 page-*.png
 passport-*.png
 .vercel
+.codex/
+outputs/
