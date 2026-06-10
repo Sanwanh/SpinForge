@@ -6,8 +6,9 @@
 // Social tables (friends/chat/community/battle) are added when those routes
 // migrate off KV (plan phase 4).
 
+import { sql } from 'drizzle-orm';
 import {
-  pgTable, text, boolean, timestamp, integer, bigint, uuid, jsonb, uniqueIndex, index,
+  pgTable, text, boolean, timestamp, integer, bigint, uuid, jsonb, uniqueIndex, index, check,
 } from 'drizzle-orm/pg-core';
 
 // ===== Better Auth core =====
@@ -101,7 +102,11 @@ export const currencyAccounts = pgTable('currency_accounts', {
   currency: text('currency').notNull(),
   balance: bigint('balance', { mode: 'number' }).notNull().default(0),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
-}, (t) => ({ pk: uniqueIndex('currency_accounts_pk').on(t.userId, t.currency) }));
+}, (t) => ({
+  pk: uniqueIndex('currency_accounts_pk').on(t.userId, t.currency),
+  // Final overdraft guard — balance can never go negative (see lib/economy.ts).
+  balanceNonNeg: check('currency_accounts_balance_nonneg', sql`${t.balance} >= 0`),
+}));
 
 export const currencyLedger = pgTable('currency_ledger', {
   id: uuid('id').primaryKey().defaultRandom(),

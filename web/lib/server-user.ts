@@ -1,18 +1,14 @@
 // Server-only resolver for the in-game user: bridges a Better Auth session to a
-// `profiles` row (handle + deterministic chainSubject) and seeds the off-chain
-// SPARK ledger once. Never trusts client-supplied identity — the user id always
-// comes from the validated session.
+// `profiles` row (handle + deterministic chainSubject). Starter SPARK is granted
+// elsewhere (entitlement-gated /api/claim-starter), not here. Never trusts
+// client-supplied identity — the user id always comes from the validated session.
 
 import { createHash } from 'crypto';
 import { NextResponse } from 'next/server';
 import { sql } from 'drizzle-orm';
 import { db } from './db';
 import { auth } from './auth';
-import { grantSpark } from './economy';
 import { funName } from './fun-name';
-
-const STARTER_SPARK = 500; // matches the on-chain starter mint (claim-starter)
-const STARTER_REASON = 'starter_grant';
 
 export interface GameUser {
   id: string;
@@ -48,7 +44,8 @@ async function ensureUniqueHandle(seed: string): Promise<string> {
 
 /**
  * Resolve the session user and guarantee a `profiles` row exists, auto-creating
- * the handle + chainSubject and granting one-time starter SPARK on first call.
+ * the handle + chainSubject on first call. Starter SPARK is NOT granted here — it
+ * is granted only via the entitlement-gated /api/claim-starter onboarding flow.
  * Returns null when there is no session.
  */
 export async function getGameUser(headers: Headers): Promise<GameUser | null> {
@@ -67,17 +64,13 @@ export async function getGameUser(headers: Headers): Promise<GameUser | null> {
   const handle = await ensureUniqueHandle(id);
 
   // Insert the profile; ON CONFLICT no-ops if a concurrent first-call won the race.
-  const inserted = await db.execute<{ user_id: string }>(sql`
+  await db.execute(sql`
     INSERT INTO profiles (user_id, handle, display_name, chain_subject)
     VALUES (${id}, ${handle}, ${name || handle}, ${chainSubject})
     ON CONFLICT (user_id) DO NOTHING
-    RETURNING user_id
   `);
 
-  // Only the call that actually created the row grants starter SPARK (once).
-  if (inserted[0]) {
-    await grantSpark(id, STARTER_SPARK, STARTER_REASON);
-  }
+  // Starter SPARK is granted only via /api/claim-starter (entitlement-gated), not here — avoids double-granting on signup.
 
   const final = await db.execute<{ handle: string; chain_subject: string }>(sql`
     SELECT handle, chain_subject FROM profiles WHERE user_id = ${id} LIMIT 1
