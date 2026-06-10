@@ -35,8 +35,30 @@ function resolveBaseUrl(): string {
   return 'http://localhost:3000';
 }
 
+// Better Auth rejects credentialed requests whose Origin header is not in
+// trustedOrigins ("Invalid origin", 403). Default is baseURL only, which broke
+// sign-in/sign-up when the same deployment is reached through its other Vercel
+// hosts (the unique deployment URL, branch URL, or team-scoped production URL
+// opened from the dashboard). Trust exactly those Vercel-injected hosts.
+function resolveTrustedOrigins(): string[] {
+  const hosts = [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ];
+  const origins = hosts.filter((h): h is string => Boolean(h)).map((h) => `https://${h}`);
+  // Escape hatch for hosts Vercel does not inject (e.g. the team-scoped
+  // production alias): comma-separated full origins.
+  const extra = (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  return [...new Set([resolveBaseUrl(), ...origins, ...extra])];
+}
+
 export const auth = betterAuth({
   baseURL: resolveBaseUrl(),
+  trustedOrigins: resolveTrustedOrigins(),
   secret: process.env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, {
     provider: 'pg',
