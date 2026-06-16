@@ -125,6 +125,19 @@ export const entitlements = pgTable('entitlements', {
   claimedAt: timestamp('claimed_at').notNull().defaultNow(),
 }, (t) => ({ pk: uniqueIndex('entitlements_pk').on(t.userId, t.kind) }));
 
+// Off-chain photo for a registered Bey ("rotor"), NFT-style. The Bey itself
+// lives on-chain (name + stats only); the real-world photo is stored off-chain
+// and keyed by the Bey's on-chain object_id — same pattern as `ownership`.
+// One photo per Bey; replacing it overwrites the row.
+export const beyImages = pgTable('bey_images', {
+  objectId: text('object_id').primaryKey(), // Bey on-chain object id
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),               // public blob URL
+  blobPath: text('blob_path'),              // storage key, for replace/delete
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (t) => ({ userIdx: index('bey_images_user_idx').on(t.userId) }));
+
 // Transactional outbox for Postgres <-> Sui consistency.
 export const chainOperations = pgTable('chain_operations', {
   id: uuid('id').primaryKey().defaultRandom(),

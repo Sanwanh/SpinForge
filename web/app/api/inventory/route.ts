@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireGameUser } from '@/lib/server-user';
 import { listInventory } from '@/lib/ownership';
+import { getBeyImages } from '@/lib/bey-image';
 import { getSuiClient, PLATFORM_CUSTODY } from '@/lib/relay';
 import { isSameOrigin, safeError } from '@/lib/api-guard';
 
@@ -17,6 +18,7 @@ interface InventoryItem {
   parentObjectId: string | null;
   content: unknown | null;
   onChainOwned: boolean;
+  imageUrl: string | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -46,6 +48,10 @@ export async function GET(request: NextRequest) {
       if (id) byId.set(id, r);
     }
 
+    // NFT-style photos, only for Beys (parts have none).
+    const beyIds = owned.filter((o) => o.objectType === 'bey').map((o) => o.objectId);
+    const images = await getBeyImages(beyIds);
+
     const items: InventoryItem[] = owned.map((o) => {
       const resp = byId.get(o.objectId);
       const ownerAddr =
@@ -61,6 +67,7 @@ export async function GET(request: NextRequest) {
         // Embedded parts are children of a Bey (not directly address-owned), so
         // the custody check only applies to active, directly-owned objects.
         onChainOwned: o.status === 'embedded' ? true : ownerAddr === PLATFORM_CUSTODY,
+        imageUrl: images.get(o.objectId) ?? null,
       };
     });
 

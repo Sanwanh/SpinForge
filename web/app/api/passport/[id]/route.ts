@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSuiClient } from '@/lib/relay';
+import { getBeyImage } from '@/lib/bey-image';
 import { safeError } from '@/lib/api-guard';
 
 const ID_RE = /^0x[0-9a-fA-F]{2,64}$/;
@@ -21,10 +22,12 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     if (!content || content.dataType !== 'moveObject') {
       return NextResponse.json({ error: 'Rotor not found' }, { status: 404 });
     }
+    const imageUrl = await getBeyImage(id);
     return NextResponse.json({
       objectId: id,
       objectType: content.type ?? '',
       fields: content.fields ?? null,
+      imageUrl,
     });
   } catch (err) {
     return safeError(err, 'Rotor fetch failed');

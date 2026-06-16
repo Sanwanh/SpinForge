@@ -237,6 +237,7 @@ function beyToCard(b: PartObject): BeyCardData | null {
     losses: Number(fields.losses ?? 0),
     burstFinishes: Number(fields.burst_finishes ?? 0),
     xtremeFinishes: Number(fields.xtreme_finishes ?? 0),
+    imageUrl: b.imageUrl ?? null,
   };
 }
 

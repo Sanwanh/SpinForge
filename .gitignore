@@ -19,6 +19,9 @@ server/target/
 .env
 .env.local
 .env.production
+.env*.local
+# Vercel CLI env dump (contains secrets)
+spinforge-prod.env
 
 # IDE
 .idea/

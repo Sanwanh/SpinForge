@@ -12,6 +12,7 @@ import {
   Tag,
 } from '@/components/design/atoms';
 import { Beyblade } from '@/components/design/Beyblade';
+import { BeyPhotoUpload } from '@/components/shared/BeyPhotoUpload';
 import { BeyCard, type BeyCardData, elementForBey } from '@/components/design/BeyCard';
 import { ELEMENT_MAP } from '@/components/design/tokens';
 import { useT } from '@/lib/i18n';
@@ -22,7 +23,11 @@ import type { PartObject } from '@/lib/inventory-types';
 
 // ─── Bey fields → BeyCardData helper ────────────────────────────────────
 
-function fieldsToCard(objectId: string, fields: Record<string, unknown> | null): BeyCardData | null {
+function fieldsToCard(
+  objectId: string,
+  fields: Record<string, unknown> | null,
+  imageUrl?: string | null,
+): BeyCardData | null {
   if (!objectId) return null;
   const f = fields ?? {};
   return {
@@ -32,11 +37,12 @@ function fieldsToCard(objectId: string, fields: Record<string, unknown> | null):
     losses: Number(f.losses ?? 0),
     burstFinishes: Number(f.burst_finishes ?? 0),
     xtremeFinishes: Number(f.xtreme_finishes ?? 0),
+    imageUrl: imageUrl ?? null,
   };
 }
 
 function partToCard(b: PartObject): BeyCardData | null {
-  return fieldsToCard(b.objectId, b.fields);
+  return fieldsToCard(b.objectId, b.fields, b.imageUrl);
 }
 
 // ─── Name parser ────────────────────────────────────────────────────────
@@ -115,7 +121,7 @@ export default function RotorDetailPage() {
   const isZh = t.nav.home === '首頁';
 
   // The rotor being viewed (works even for someone else's rotor for sharing)
-  const { rotor: rotorView, isLoading: loadingRotor } = useRotor(rotorId);
+  const { rotor: rotorView, isLoading: loadingRotor, refetch: refetchRotor } = useRotor(rotorId);
 
   // The current user's full Bey collection — for ranking + build analysis
   const { beys: ownedBeys } = useInventory();
@@ -126,7 +132,7 @@ export default function RotorDetailPage() {
 
   const rotor: BeyCardData | null = React.useMemo(() => {
     if (!rotorView?.objectId) return null;
-    return fieldsToCard(rotorView.objectId, rotorView.fields);
+    return fieldsToCard(rotorView.objectId, rotorView.fields, rotorView.imageUrl);
   }, [rotorView]);
 
   if (loadingRotor) {
@@ -253,8 +259,39 @@ export default function RotorDetailPage() {
           }}
         >
           <Corners color={meta.color} />
-          <div style={{ display: 'grid', placeItems: 'center' }}>
-            <Beyblade size={200} element={el} spinSpeed={1.0} />
+          <div style={{ display: 'grid', placeItems: 'center', gap: 14 }}>
+            {rotor.imageUrl ? (
+              <img
+                src={rotor.imageUrl}
+                alt={rotor.name}
+                style={{
+                  width: 200,
+                  height: 200,
+                  objectFit: 'cover',
+                  borderRadius: 16,
+                  border: `1px solid ${meta.color}66`,
+                  boxShadow: `0 0 32px ${meta.color}22`,
+                }}
+              />
+            ) : (
+              <Beyblade size={200} element={el} spinSpeed={1.0} />
+            )}
+            {isOwner && (
+              <BeyPhotoUpload
+                beyId={rotor.objectId}
+                currentUrl={rotor.imageUrl}
+                showPreview={false}
+                onUploaded={() => refetchRotor()}
+                labels={{
+                  add: t.passport.photoAdd,
+                  replace: t.passport.photoReplace,
+                  uploading: t.passport.photoUploading,
+                  hint: t.passport.photoHint,
+                  tooLarge: t.passport.photoTooLarge,
+                  failed: t.passport.photoFailed,
+                }}
+              />
+            )}
           </div>
           <div>
             <div

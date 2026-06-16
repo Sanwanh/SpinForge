@@ -1,12 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { PageHeader, Section, Tag, Corners } from '@/components/design/atoms';
 import { useT } from '@/lib/i18n';
 import { useGameUser } from '@/hooks/useGameUser';
 import { api } from '@/lib/api-fetch';
+import { uploadBeyPhoto, MAX_BEY_PHOTO_BYTES } from '@/lib/bey-photo-client';
+import { BeyPhotoUpload } from '@/components/shared/BeyPhotoUpload';
 
 const REAL_BLADES = [
   'Wizard Rod', 'Phoenix Wing', 'Dran Sword', 'Shark Edge',
@@ -255,6 +257,27 @@ export default function RegisterPage() {
   const [result, setResult] = useState<{ beyId: string; name: string; digest: string } | null>(null);
   const [error, setError] = useState('');
 
+  // Optional NFT-style photo, picked before minting and uploaded right after the
+  // Bey object id exists (the photo is keyed by that id).
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string>('');
+  const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [photoError, setPhotoError] = useState('');
+
+  const onPickPhoto = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = '';
+    setPhotoError('');
+    if (!file) return;
+    if (file.size > MAX_BEY_PHOTO_BYTES) {
+      setPhotoError(isZh ? '圖片需小於 5 MB' : 'Image must be 5 MB or smaller');
+      return;
+    }
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  }, [isZh]);
+
   const handleRegister = useCallback(async () => {
     if (!user || !blade) return;
     setStatus('registering');
@@ -276,11 +299,22 @@ export default function RegisterPage() {
 
       setResult({ beyId: data.beyId, name: data.name, digest: data.digest ?? '' });
       setStatus('done');
+
+      // The Bey now exists on-chain; attach the photo if one was picked. A photo
+      // failure must not undo a successful mint — surface it, keep the success.
+      if (photoFile && data.beyId) {
+        try {
+          const url = await uploadBeyPhoto(data.beyId, photoFile);
+          setPhotoUrl(url);
+        } catch (err) {
+          setPhotoError(err instanceof Error ? err.message : 'Photo upload failed');
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed');
       setStatus('error');
     }
-  }, [user, blade, spirit, beyType, spin, prong, height, bit, bitCat]);
+  }, [user, blade, spirit, beyType, spin, prong, height, bit, bitCat, photoFile]);
 
   // ─── Loading state ───
   if (isPending) {
@@ -335,7 +369,23 @@ export default function RegisterPage() {
               }}
             >
               <Corners color="var(--gold)" />
-              <div style={{ fontSize: 48, marginBottom: 16 }}>⚡</div>
+              {photoUrl ? (
+                <img
+                  src={photoUrl}
+                  alt={result.name}
+                  style={{
+                    width: 180,
+                    height: 180,
+                    objectFit: 'cover',
+                    borderRadius: 16,
+                    border: '1px solid var(--gold)',
+                    margin: '0 auto 16px',
+                    display: 'block',
+                  }}
+                />
+              ) : (
+                <div style={{ fontSize: 48, marginBottom: 16 }}>⚡</div>
+              )}
               <div className="t-h3" style={{ marginBottom: 8 }}>{result.name}</div>
               <div className="t-mono" style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 12 }}>
                 {isZh ? '物件 ID' : 'Object ID'}: {result.beyId.slice(0, 12)}…{result.beyId.slice(-6)}
@@ -345,11 +395,42 @@ export default function RegisterPage() {
                   {isZh ? '交易' : 'TX'}: {result.digest.slice(0, 16)}…
                 </div>
               )}
+              {!photoUrl && (
+                <div style={{ marginBottom: 24 }}>
+                  {photoError && (
+                    <p className="t-mono" style={{ color: 'var(--blood)', fontSize: 12, marginBottom: 10 }}>
+                      {photoError}
+                    </p>
+                  )}
+                  <BeyPhotoUpload
+                    beyId={result.beyId}
+                    onUploaded={(url) => setPhotoUrl(url)}
+                    labels={{
+                      add: t.passport.photoAdd,
+                      replace: t.passport.photoReplace,
+                      uploading: t.passport.photoUploading,
+                      hint: t.passport.photoHint,
+                      tooLarge: t.passport.photoTooLarge,
+                      failed: t.passport.photoFailed,
+                    }}
+                  />
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <a href="/passport" className="btn btn-primary">
                   {isZh ? '查看護照' : 'View Passport'}
                 </a>
-                <button onClick={() => { setStatus('idle'); setResult(null); }} className="btn btn-ghost">
+                <button
+                  onClick={() => {
+                    setStatus('idle');
+                    setResult(null);
+                    setPhotoFile(null);
+                    setPhotoPreview('');
+                    setPhotoUrl('');
+                    setPhotoError('');
+                  }}
+                  className="btn btn-ghost"
+                >
                   {isZh ? '再註冊一個' : 'Register Another'}
                 </button>
               </div>
@@ -570,6 +651,89 @@ export default function RegisterPage() {
                 </Chip>
               ))}
             </div>
+          </div>
+
+          {/* ─── PHOTO (optional) ─── */}
+          <div className="panel" style={{ padding: 24 }}>
+            <SectionEyebrow
+              step="04"
+              color="var(--gold)"
+              zh="照片"
+              en="PHOTO"
+              isZh={isZh}
+            />
+            <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                style={{
+                  width: 96,
+                  height: 96,
+                  borderRadius: 12,
+                  border: '1px dashed var(--border)',
+                  background: 'var(--void)',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  display: 'grid',
+                  placeItems: 'center',
+                  overflow: 'hidden',
+                  padding: 0,
+                }}
+                aria-label={isZh ? '上傳陀螺照片' : 'Upload Bey photo'}
+              >
+                {photoPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={photoPreview}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <span style={{ fontSize: 28, opacity: 0.5 }}>📷</span>
+                )}
+              </button>
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontSize: 14, color: 'var(--text)', marginBottom: 6 }}>
+                  {isZh ? '上傳你實體陀螺的照片（選填）' : 'Add a photo of your real Beyblade (optional)'}
+                </div>
+                <div className="t-mono" style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                  {isZh
+                    ? 'JPEG / PNG / WebP · 最大 5 MB · 鑄造後自動附上'
+                    : 'JPEG / PNG / WebP · max 5 MB · attached right after minting'}
+                </div>
+                {photoError && (
+                  <div className="t-mono" style={{ fontSize: 11, color: 'var(--blood)', marginTop: 6 }}>
+                    {photoError}
+                  </div>
+                )}
+                {photoFile && (
+                  <button
+                    type="button"
+                    onClick={() => { setPhotoFile(null); setPhotoPreview(''); setPhotoError(''); }}
+                    className="t-mono"
+                    style={{
+                      marginTop: 8,
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-mute)',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    {isZh ? '移除' : 'Remove'}
+                  </button>
+                )}
+              </div>
+            </div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={onPickPhoto}
+              style={{ display: 'none' }}
+            />
           </div>
 
           {/* ─── PREVIEW + REGISTER ─── */}

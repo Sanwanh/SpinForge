@@ -55,6 +55,7 @@ export interface RotorView {
   fields: Record<string, unknown> | null;
   objectId: string;
   objectType: string;
+  imageUrl?: string | null;
 }
 
 /**
@@ -65,29 +66,26 @@ export function useRotor(rotorId: string) {
   const [rotor, setRotor] = useState<RotorView | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
+  const refetch = useCallback(async () => {
     if (!rotorId) {
       setRotor(null);
       return;
     }
-    let cancelled = false;
     setIsLoading(true);
-    (async () => {
-      try {
-        const res = await api(`/api/passport/${encodeURIComponent(rotorId)}`);
-        if (!res.ok) throw new Error(`Rotor fetch failed (${res.status})`);
-        const data = (await res.json()) as RotorView;
-        if (!cancelled) setRotor(data);
-      } catch {
-        if (!cancelled) setRotor(null);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const res = await api(`/api/passport/${encodeURIComponent(rotorId)}`);
+      if (!res.ok) throw new Error(`Rotor fetch failed (${res.status})`);
+      setRotor((await res.json()) as RotorView);
+    } catch {
+      setRotor(null);
+    } finally {
+      setIsLoading(false);
+    }
   }, [rotorId]);
 
-  return { rotor, isLoading };
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
+
+  return { rotor, isLoading, refetch };
 }

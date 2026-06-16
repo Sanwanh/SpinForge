@@ -28,6 +28,8 @@ export interface BeyCardData {
   losses: number;
   burstFinishes: number;
   xtremeFinishes: number;
+  /** NFT-style real photo of the physical Bey, if uploaded. */
+  imageUrl?: string | null;
 }
 
 export interface BeyCardProps {
@@ -144,7 +146,21 @@ export function BeyCard({
         }}
       >
         <div style={{ flexShrink: 0 }}>
-          <Beyblade size={compact ? 64 : 80} element={el} spinSpeed={0.9} />
+          {bey.imageUrl ? (
+            <img
+              src={bey.imageUrl}
+              alt={bey.name || 'Bey photo'}
+              style={{
+                width: compact ? 64 : 80,
+                height: compact ? 64 : 80,
+                objectFit: 'cover',
+                borderRadius: '50%',
+                border: `1px solid ${meta.color}66`,
+              }}
+            />
+          ) : (
+            <Beyblade size={compact ? 64 : 80} element={el} spinSpeed={0.9} />
+          )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div

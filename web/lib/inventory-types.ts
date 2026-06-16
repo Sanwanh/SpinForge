@@ -10,6 +10,7 @@ export interface PartObject {
   objectId: string;
   type: PartKind;
   fields: Record<string, unknown>;
+  imageUrl?: string | null;
 }
 
 // Sui object `content` envelope (showContent). For moveObjects the struct lives
@@ -28,6 +29,7 @@ export interface InventoryItem {
   parentObjectId: string | null;
   content: SuiMoveContent | null;
   onChainOwned?: boolean;
+  imageUrl?: string | null;
 }
 
 export interface InventoryResponse {
@@ -69,7 +71,12 @@ export function toPartObject(item: InventoryItem): PartObject | null {
     ? (item.objectType as PartKind)
     : classifyType(item.content?.type ?? '');
   if (!kind) return null;
-  return { objectId: item.objectId, type: kind, fields: fieldsOf(item.content) };
+  return {
+    objectId: item.objectId,
+    type: kind,
+    fields: fieldsOf(item.content),
+    imageUrl: item.imageUrl ?? null,
+  };
 }
 
 /** Split a flat inventory item list into the four part buckets. */
