@@ -28,8 +28,15 @@ interface RoomData {
   battleStartedAt?: number | null;
   battleEndedAt?: number | null;
   durationSeconds?: number | null;
+  youAre?: 'creator' | 'opponent' | null;
   status: string;
   result: { winner: string; finishType: number; scoreA: number; scoreB: number } | null;
+}
+
+// Both players have chosen → advance to the battle/timer screen. Derived from
+// the rotor fields directly (robust even if the legacy status string lags).
+function bothChose(room: RoomData): boolean {
+  return !!room.creatorRotor && !!room.opponentRotor;
 }
 
 // mm:ss formatting for the match timer.
@@ -146,7 +153,7 @@ export default function BattlePage() {
     if (data.success) {
       setLastUsedRotor(selectedRotor);
       setRoom(data.room);
-      if (data.room.status === 'in_progress') setPhase('battle');
+      if (bothChose(data.room)) setPhase('battle');
     }
   }, [myId, selectedRotor, roomId, beys, roomApi]);
 
@@ -217,7 +224,7 @@ export default function BattlePage() {
       if (!data.room) return;
       setRoom(data.room);
       if (phase === 'waiting' && data.room.status === 'ready') setPhase('select');
-      if (phase === 'select' && data.room.status === 'in_progress') setPhase('battle');
+      if (phase === 'select' && bothChose(data.room)) setPhase('battle');
       if (phase === 'battle' && data.room.battleEndedAt) setPhase('submit');
     }, 3000);
     return () => clearInterval(interval);
@@ -273,13 +280,17 @@ export default function BattlePage() {
     })();
   }, [myId, roomApi]);
 
+  // Which side I am, per the server (session-derived). creator/opponent in the
+  // room are HANDLES, not user ids, so we must use this instead of comparing to myId.
+  const iAmCreator = room?.youAre === 'creator';
+
   // Opponent's bey object (fetched directly from chain so we always see
   // their real name + stats — independent of what the room cache claims).
-  const opponentAddress = myId
-    ? (room?.creator === myId ? room?.opponent : room?.creator)
+  const opponentAddress = room
+    ? (iAmCreator ? room.opponent : room.creator)
     : null;
-  const opponentRotorId = myId
-    ? (room?.creator === myId ? room?.opponentRotor : room?.creatorRotor)
+  const opponentRotorId = room
+    ? (iAmCreator ? room.opponentRotor : room.creatorRotor)
     : null;
 
   const { data: opponentBeyObj } = useSuiClientQuery(
@@ -404,7 +415,7 @@ export default function BattlePage() {
           {/* Phase: Select Rotor */}
           {phase === 'select' && (() => {
             const lastUsedId = getLastUsedRotor();
-            const myRotorId = myId ? (room?.creator === myId ? room?.creatorRotor : room?.opponentRotor) : null;
+            const myRotorId = room ? (iAmCreator ? room.creatorRotor : room.opponentRotor) : null;
             const myConfirmed = !!myRotorId;
             const opponentConfirmed = !!opponentRotorId;
             return (

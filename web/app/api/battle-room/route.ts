@@ -91,9 +91,14 @@ function durationSecondsOf(state: RoomState): number | null {
 
 // Shape a resolved room into the object the existing UI consumes. Identities are
 // handles; result.winner is the winner's handle.
-function shapeRoom(resolved: ResolvedRoom) {
+function shapeRoom(resolved: ResolvedRoom, viewerId?: string) {
   const { row, creatorHandle, opponentHandle } = resolved;
   const state = row.result ?? emptyState();
+  // Which side the requesting session is — the ONLY reliable self/opponent
+  // signal (creator/opponent are handles, not user ids, so the client cannot
+  // derive its own side by comparing handles to its user id).
+  const youAre: 'creator' | 'opponent' | null =
+    viewerId === row.creator_id ? 'creator' : viewerId === row.opponent_id ? 'opponent' : null;
   const winnerHandle = state.outcome
     ? state.outcome.winnerId === row.creator_id
       ? creatorHandle
@@ -110,6 +115,7 @@ function shapeRoom(resolved: ResolvedRoom) {
     battleStartedAt: state.battleStartedAt,
     battleEndedAt: state.battleEndedAt,
     durationSeconds: durationSecondsOf(state),
+    youAre,
     status: legacyStatus(row, state),
     result: state.outcome
       ? {
@@ -196,7 +202,7 @@ export async function POST(request: NextRequest) {
           creatorHandle: me.handle,
           opponentHandle: null,
         };
-        const room = shapeRoom(resolved);
+        const room = shapeRoom(resolved, me.id);
         return NextResponse.json({ success: true, roomId: code, room });
       }
 
@@ -217,7 +223,7 @@ export async function POST(request: NextRequest) {
           WHERE id = ${row.id} AND status = 'open'
         `);
         const fresh = await resolveRoom(body.roomId);
-        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
       }
 
       case 'select-rotor': {
@@ -242,7 +248,7 @@ export async function POST(request: NextRequest) {
         // Both sides chosen -> stays 'active' but legacyStatus reports in_progress.
         await persistState(row.id, 'active', state);
         const fresh = await resolveRoom(body.roomId);
-        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
       }
 
       // Synchronized match timer: either participant starts it once both Beys
@@ -265,7 +271,7 @@ export async function POST(request: NextRequest) {
           await persistState(row.id, 'active', state);
         }
         const fresh = await resolveRoom(body.roomId);
-        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
       }
 
       // Either participant stops the shared timer; the single end timestamp
@@ -287,7 +293,7 @@ export async function POST(request: NextRequest) {
           await persistState(row.id, 'active', state);
         }
         const fresh = await resolveRoom(body.roomId);
-        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
       }
 
       case 'submit-result': {
@@ -319,7 +325,7 @@ export async function POST(request: NextRequest) {
         state.outcome = { winnerId, finishType: ft, scoreA: sa, scoreB: sb };
         await persistState(row.id, 'reporting', state);
         const fresh = await resolveRoom(body.roomId);
-        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
       }
 
       case 'confirm-result': {
@@ -335,13 +341,13 @@ export async function POST(request: NextRequest) {
         }
         await persistState(row.id, 'settled', state);
         const fresh = await resolveRoom(body.roomId);
-        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
       }
 
       case 'get': {
         const resolved = await resolveRoom(body.roomId);
         if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
-        return NextResponse.json({ room: shapeRoom(resolved) });
+        return NextResponse.json({ room: shapeRoom(resolved, me.id) });
       }
 
       default:
