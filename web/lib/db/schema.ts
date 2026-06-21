@@ -272,6 +272,8 @@ export const battles = pgTable('battles', {
   finishType: integer('finish_type').notNull().default(0),
   scoreA: integer('score_a').notNull().default(0),
   scoreB: integer('score_b').notNull().default(0),
+  // Match duration in seconds, agreed by both players (part of the confirm hash).
+  durationSeconds: integer('duration_seconds').notNull().default(0),
   season: text('season'),
   chainRecordId: text('chain_record_id').unique(),
   txDigest: text('tx_digest').unique(),

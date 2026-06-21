@@ -25,8 +25,29 @@ interface RoomData {
   opponentRotor: string | null;
   creatorRotorName?: string | null;
   opponentRotorName?: string | null;
+  battleStartedAt?: number | null;
+  battleEndedAt?: number | null;
+  durationSeconds?: number | null;
   status: string;
   result: { winner: string; finishType: number; scoreA: number; scoreB: number } | null;
+}
+
+// mm:ss formatting for the match timer.
+function fmtDuration(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const mm = Math.floor(s / 60).toString().padStart(2, '0');
+  const ss = (s % 60).toString().padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
+// Compact label/value row for the read-only confirm view.
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span className="t-eyebrow" style={{ fontSize: 9 }}>{label}</span>
+      <span className="t-mono" style={{ fontSize: 14, color: 'var(--text)' }}>{value}</span>
+    </div>
+  );
 }
 
 function beyFromInventory(b: { objectId: string; fields: Record<string, unknown> }): BeyCardData {
@@ -77,6 +98,11 @@ export default function BattlePage() {
   const [error, setError] = useState('');
   const [onChainId, setOnChainId] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
+  // Live re-render tick (1s) so the running timer counts up smoothly.
+  const [, setNowTick] = useState(0);
+  const [busy, setBusy] = useState(false);
+  // True for the player who proposed the result; the other player confirms it.
+  const [iProposed, setIProposed] = useState(false);
 
   // Room actions go through the session-authenticated API. Identity comes from
   // the session cookie, so we never send creator/opponent/player/submitter.
@@ -124,50 +150,96 @@ export default function BattlePage() {
     }
   }, [myId, selectedRotor, roomId, beys, roomApi]);
 
-  const handleSubmitResult = useCallback(async () => {
-    if (!myId || !winner) return;
-    const data = await roomApi({
-      action: 'submit-result', roomId,
-      winner, finishType, scoreA, scoreB,
-    });
+  // Synchronized match timer: a single server timestamp drives both clients.
+  const handleStartBattle = useCallback(async () => {
+    const data = await roomApi({ action: 'start-battle', roomId });
+    if (data.success) setRoom(data.room);
+    else setError(data.error);
+  }, [roomId, roomApi]);
+
+  const handleEndBattle = useCallback(async () => {
+    const data = await roomApi({ action: 'end-battle', roomId });
     if (data.success) { setRoom(data.room); setPhase('submit'); }
-  }, [myId, roomId, winner, finishType, scoreA, scoreB, roomApi]);
+    else setError(data.error);
+  }, [roomId, roomApi]);
 
-  const handleConfirm = useCallback(async () => {
-    if (!myId) return;
-    await roomApi({ action: 'confirm-result', roomId });
+  // Single commit path used by propose, confirm, AND polling. Server reads Beys
+  // + duration from the room, so both players' canonical hashes match and the
+  // record commits on-chain only once both have confirmed. Returns true when
+  // the on-chain record is committed.
+  const commitToChain = useCallback(
+    async (winnerSide: 'creator' | 'opponent', ft: number, sa: number, sb: number): Promise<boolean> => {
+      const res = await api('/api/submit-result', {
+        code: roomId, winnerSide, finishType: ft, scoreA: sa, scoreB: sb,
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) { setError(data.error || 'Commit failed'); return false; }
+      if (data.committed) { setOnChainId(data.recordId || ''); setPhase('done'); return true; }
+      return false; // recorded; still waiting for the opponent to confirm
+    },
+    [roomId],
+  );
 
-    // Commit to chain — the server derives our participant identity from the
-    // session and relays the on-chain record with the platform signer.
-    const res = await api('/api/submit-result', {
-      playerA: room?.creator,
-      playerB: room?.opponent,
-      rotorA: room?.creatorRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
-      rotorB: room?.opponentRotor ?? '0x0000000000000000000000000000000000000000000000000000000000000000',
-      winner, finishType, scoreA, scoreB,
-    });
-    const data = await res.json();
-    if (data.success) {
-      setOnChainId(data.recordId);
-      setPhase('done');
-    } else {
-      setError(data.error);
-    }
-  }, [myId, roomId, room, winner, finishType, scoreA, scoreB, roomApi]);
+  // Proposer: broadcast the outcome to the room, then record my confirmation.
+  const handleProposeResult = useCallback(async () => {
+    if (!myId || !winner || !room || busy) return;
+    const side: 'creator' | 'opponent' = winner === room.creator ? 'creator' : 'opponent';
+    setBusy(true); setError('');
+    try {
+      const data = await roomApi({ action: 'submit-result', roomId, winner, finishType, scoreA, scoreB });
+      if (!data.success) { setError(data.error); return; }
+      setRoom(data.room);
+      setIProposed(true);
+      const committed = await commitToChain(side, finishType, scoreA, scoreB);
+      if (!committed) setPhase('confirmed');
+    } finally { setBusy(false); }
+  }, [myId, winner, room, busy, roomId, finishType, scoreA, scoreB, roomApi, commitToChain]);
 
-  // Poll for room updates during waiting / select / submit phases so each
-  // player sees the other's selection + result without manual refresh.
+  // Confirmer: adopt the proposed result (incl. the shared duration) and confirm.
+  const handleConfirmOpponent = useCallback(async () => {
+    if (!myId || !room?.result || busy) return;
+    const r = room.result;
+    const side: 'creator' | 'opponent' = r.winner === room.creator ? 'creator' : 'opponent';
+    setBusy(true); setError('');
+    try {
+      setWinner(side === 'creator' ? room.creator : (room.opponent ?? ''));
+      setFinishType(r.finishType); setScoreA(r.scoreA); setScoreB(r.scoreB);
+      const committed = await commitToChain(side, r.finishType, r.scoreA, r.scoreB);
+      if (!committed) setPhase('confirmed');
+    } finally { setBusy(false); }
+  }, [myId, room, busy, commitToChain]);
+
+  // Poll room state across the live phases so both players stay in sync.
   useEffect(() => {
-    if (phase !== 'waiting' && phase !== 'select' && phase !== 'submit') return;
+    if (!['waiting', 'select', 'battle', 'submit'].includes(phase)) return;
     const interval = setInterval(async () => {
       const data = await roomApi({ action: 'get', roomId });
       if (!data.room) return;
       setRoom(data.room);
       if (phase === 'waiting' && data.room.status === 'ready') setPhase('select');
       if (phase === 'select' && data.room.status === 'in_progress') setPhase('battle');
+      if (phase === 'battle' && data.room.battleEndedAt) setPhase('submit');
     }, 3000);
     return () => clearInterval(interval);
   }, [phase, roomId, roomApi]);
+
+  // In the 'confirmed' phase, re-send my confirmation on a timer; it commits the
+  // moment the opponent agrees on the same result (idempotent server-side).
+  useEffect(() => {
+    if (phase !== 'confirmed' || !room) return;
+    const side: 'creator' | 'opponent' = winner === room.creator ? 'creator' : 'opponent';
+    const interval = setInterval(() => {
+      commitToChain(side, finishType, scoreA, scoreB);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [phase, room, winner, finishType, scoreA, scoreB, commitToChain]);
+
+  // Tick once a second while the shared timer is running so it counts up live.
+  useEffect(() => {
+    if (phase !== 'battle' || !room?.battleStartedAt || room?.battleEndedAt) return;
+    const id = setInterval(() => setNowTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [phase, room?.battleStartedAt, room?.battleEndedAt]);
 
   // Deep-link from the Friends page: ?join=CODE auto-joins as opponent,
   // ?room=CODE resumes as the room creator (waiting for the friend to join).
@@ -505,83 +577,148 @@ export default function BattlePage() {
                   </div>
                 </div>
 
-                <div
-                  className="panel"
-                  style={{ padding: 32, textAlign: 'center', border: '1px solid var(--fire)' }}
-                >
-                  <div style={{ fontSize: 64, marginBottom: 16 }}>🔥</div>
-                  <div className="t-h3" style={{ marginBottom: 8 }}>
-                    {isZh ? '開始實體對戰！' : 'Battle Now!'}
-                  </div>
-                  <p className="muted" style={{ fontSize: 14, marginBottom: 24 }}>
-                    {isZh
-                      ? '在現實中發射你們的陀螺。結束後由勝者提交結果。'
-                      : 'Launch your Beyblades in real life. The winner submits the result after.'}
-                  </p>
-                  <button
-                    onClick={() => setPhase('submit')}
-                    className="btn btn-primary"
-                    style={{ padding: '12px 32px' }}
-                  >
-                    {isZh ? '對戰結束，提交結果' : 'Battle Over — Submit Result'}
-                  </button>
-                </div>
+                {(() => {
+                  const startedAt = room?.battleStartedAt ?? null;
+                  const endedAt = room?.battleEndedAt ?? null;
+                  const running = !!startedAt && !endedAt;
+                  const elapsed = running
+                    ? (Date.now() - startedAt) / 1000
+                    : room?.durationSeconds ?? 0;
+                  return (
+                    <div
+                      className="panel"
+                      style={{ padding: 32, textAlign: 'center', border: '1px solid var(--fire)' }}
+                    >
+                      <div style={{ fontSize: 48, marginBottom: 8 }}>{running ? '⏱️' : '🔥'}</div>
+                      <div className="t-h3" style={{ marginBottom: 8 }}>
+                        {!startedAt
+                          ? (isZh ? '準備開始對戰' : 'Ready to Battle')
+                          : running
+                            ? (isZh ? '對戰進行中' : 'Battle in Progress')
+                            : (isZh ? '對戰結束' : 'Battle Over')}
+                      </div>
+                      <div
+                        className="t-display"
+                        style={{ fontSize: 64, letterSpacing: '0.08em', color: 'var(--gold)', margin: '4px 0 16px' }}
+                      >
+                        {fmtDuration(elapsed)}
+                      </div>
+                      <p className="muted" style={{ fontSize: 13, marginBottom: 20 }}>
+                        {isZh
+                          ? '計時雙方同步：任一方開始，兩邊一起計時；結束後時長雙方一致。'
+                          : 'The timer is synchronized: either player starts it, both clocks run together, and the final duration matches for both.'}
+                      </p>
+                      {!startedAt ? (
+                        <button onClick={handleStartBattle} className="btn btn-primary" style={{ padding: '12px 32px' }}>
+                          {isZh ? '開始比賽' : 'Start Battle'}
+                        </button>
+                      ) : running ? (
+                        <button onClick={handleEndBattle} className="btn btn-primary" style={{ padding: '12px 32px' }}>
+                          {isZh ? '結束比賽' : 'Stop Battle'}
+                        </button>
+                      ) : (
+                        <button onClick={() => setPhase('submit')} className="btn btn-primary" style={{ padding: '12px 32px' }}>
+                          {isZh ? '提交結果' : 'Submit Result'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
 
-          {/* Phase: Submit Result */}
-          {phase === 'submit' && (
-            <div className="panel" style={{ padding: 28 }}>
-              <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 16 }}>{isZh ? '對戰結果' : 'Battle Result'}</div>
-
-              <div style={{ marginBottom: 16 }}>
-                <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '勝者' : 'Winner'}</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => setWinner(room?.creator ?? '')} className={winner === room?.creator ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
-                    Player A
-                  </button>
-                  <button onClick={() => setWinner(room?.opponent ?? '')} className={winner === room?.opponent ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
-                    Player B
-                  </button>
+          {/* Phase: Submit Result (propose) or Confirm opponent's proposal */}
+          {phase === 'submit' && (() => {
+            const confirmMode = !!room?.result && !iProposed;
+            const proposed = room?.result ?? null;
+            const proposedWinnerLabel = proposed
+              ? (proposed.winner === room?.creator ? 'Player A' : 'Player B')
+              : '';
+            return (
+              <div className="panel" style={{ padding: 28 }}>
+                <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 16 }}>
+                  {confirmMode ? (isZh ? '確認對手提交的成績' : "Confirm Opponent's Result") : (isZh ? '對戰結果' : 'Battle Result')}
                 </div>
-              </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '終結方式' : 'Finish Type'}</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {[0, 1, 2, 3].map((ft) => (
-                    <button key={ft} onClick={() => setFinishType(ft)} className={finishType === ft ? 'btn btn-primary' : 'btn btn-ghost'} style={{ fontSize: 11, padding: '8px 12px' }}>
-                      {FINISH_LABELS[ft]}
+                {/* Agreed, server-authoritative match duration. */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', marginBottom: 16 }}>
+                  <span className="t-eyebrow" style={{ fontSize: 9 }}>{isZh ? '比賽時長' : 'Match Duration'}</span>
+                  <span className="t-mono" style={{ fontSize: 20, color: 'var(--gold)' }}>{fmtDuration(room?.durationSeconds ?? 0)}</span>
+                </div>
+
+                {confirmMode ? (
+                  <>
+                    <div style={{ display: 'grid', gap: 8, marginBottom: 18 }}>
+                      <Row label={isZh ? '勝者' : 'Winner'} value={proposedWinnerLabel} />
+                      <Row label={isZh ? '終結方式' : 'Finish Type'} value={FINISH_LABELS[proposed?.finishType ?? 0]} />
+                      <Row label="Score" value={`${proposed?.scoreA ?? 0} - ${proposed?.scoreB ?? 0}`} />
+                    </div>
+                    <p className="muted" style={{ fontSize: 12, marginBottom: 14 }}>
+                      {isZh ? '確認後雙方成績（含時長）一致即寫入並上鏈。' : 'On confirm, both results (including duration) match and the record is written on-chain.'}
+                    </p>
+                    <button onClick={handleConfirmOpponent} disabled={busy} className="btn btn-primary" style={{ width: '100%', padding: '14px 0' }}>
+                      {busy ? (isZh ? '確認中…' : 'Confirming…') : (isZh ? '確認成績' : 'Confirm Result')}
                     </button>
-                  ))}
-                </div>
-              </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: 16 }}>
+                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '勝者' : 'Winner'}</div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => setWinner(room?.creator ?? '')} className={winner === room?.creator ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
+                          Player A
+                        </button>
+                        <button onClick={() => setWinner(room?.opponent ?? '')} className={winner === room?.opponent ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
+                          Player B
+                        </button>
+                      </div>
+                    </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                <div>
-                  <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Score A</div>
-                  <input type="number" value={scoreA} onChange={(e) => setScoreA(Number(e.target.value))} min={0} max={99} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
-                </div>
-                <div>
-                  <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Score B</div>
-                  <input type="number" value={scoreB} onChange={(e) => setScoreB(Number(e.target.value))} min={0} max={99} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
-                </div>
-              </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '終結方式' : 'Finish Type'}</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {[0, 1, 2, 3].map((ft) => (
+                          <button key={ft} onClick={() => setFinishType(ft)} className={finishType === ft ? 'btn btn-primary' : 'btn btn-ghost'} style={{ fontSize: 11, padding: '8px 12px' }}>
+                            {FINISH_LABELS[ft]}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-              <button onClick={handleSubmitResult} disabled={!winner} className="btn btn-primary" style={{ width: '100%', padding: '14px 0' }}>
-                {isZh ? '提交結果（等待對手確認）' : 'Submit (waiting for opponent to confirm)'}
-              </button>
-            </div>
-          )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                      <div>
+                        <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Score A</div>
+                        <input type="number" value={scoreA} onChange={(e) => setScoreA(Math.min(15, Math.max(0, Number(e.target.value))))} min={0} max={15} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
+                      </div>
+                      <div>
+                        <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Score B</div>
+                        <input type="number" value={scoreB} onChange={(e) => setScoreB(Math.min(15, Math.max(0, Number(e.target.value))))} min={0} max={15} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
+                      </div>
+                    </div>
+
+                    <button onClick={handleProposeResult} disabled={!winner || busy} className="btn btn-primary" style={{ width: '100%', padding: '14px 0' }}>
+                      {busy ? (isZh ? '提交中…' : 'Submitting…') : (isZh ? '提交成績（等待對手確認）' : 'Submit (waiting for opponent to confirm)')}
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Phase: Waiting for confirm (for opponent) */}
           {phase === 'confirmed' && (
-            <div className="panel" style={{ padding: 28, textAlign: 'center' }}>
-              <p className="muted">{isZh ? '等待對手確認...' : 'Waiting for opponent to confirm...'}</p>
-              <button onClick={handleConfirm} className="btn btn-primary" style={{ marginTop: 16, padding: '12px 32px' }}>
-                {isZh ? '我確認結果' : 'I Confirm Result'}
-              </button>
+            <div className="panel" style={{ padding: 32, textAlign: 'center' }}>
+              <div style={{ width: 28, height: 28, border: '2px solid var(--gold)', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 16px' }} />
+              <div className="t-h3" style={{ marginBottom: 8 }}>{isZh ? '已送出你的確認' : 'Your confirmation is in'}</div>
+              <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+                {isZh ? '雙方成績（含時長）一致後即自動寫入並上鏈。' : 'Once both results (including duration) match, it commits on-chain automatically.'}
+              </p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
+                <Tag color="var(--gold)">{scoreA} - {scoreB}</Tag>
+                <Tag color="var(--fire)">{FINISH_LABELS[finishType]}</Tag>
+                <Tag color="var(--wood)">⏱ {fmtDuration(room?.durationSeconds ?? 0)}</Tag>
+              </div>
             </div>
           )}
 
@@ -597,10 +734,11 @@ export default function BattlePage() {
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <Tag color="var(--gold)">{scoreA} - {scoreB}</Tag>
                 <Tag color="var(--fire)">{FINISH_LABELS[finishType]}</Tag>
+                <Tag color="var(--wood)">⏱ {fmtDuration(room?.durationSeconds ?? 0)}</Tag>
               </div>
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 }}>
                 <a href="/passport" className="btn btn-primary">{isZh ? '查看護照' : 'View Passport'}</a>
-                <button onClick={() => { setPhase('create'); setRoomId(''); setRoom(null); setError(''); setOnChainId(''); }} className="btn btn-ghost">
+                <button onClick={() => { setPhase('create'); setRoomId(''); setRoom(null); setError(''); setOnChainId(''); setIProposed(false); setWinner(''); setSelectedRotor(''); setFinishType(0); setScoreA(7); setScoreB(0); }} className="btn btn-ghost">
                   {isZh ? '再來一場' : 'Battle Again'}
                 </button>
               </div>

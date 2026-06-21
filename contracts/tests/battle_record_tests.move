@@ -25,6 +25,7 @@ module spinforge::battle_record_tests {
             rotor_a, rotor_b,
             PLAYER_A, // winner
             3, 7, 5, // finish_type, score_a, score_b
+            120, // duration_seconds
             &test_clock,
             test_scenario::ctx(&mut scenario),
         );
@@ -32,6 +33,7 @@ module spinforge::battle_record_tests {
         assert!(!battle_record::is_committed(&record));
         assert!(battle_record::winner(&record) == PLAYER_A);
         assert!(battle_record::score_a(&record) == 7);
+        assert!(battle_record::duration_seconds(&record) == 120);
 
         // First participant confirms — still not committed.
         battle_record::confirm(&mut record, test_scenario::ctx(&mut scenario));
@@ -61,6 +63,7 @@ module spinforge::battle_record_tests {
             PLAYER_A, PLAYER_B,
             object::id_from_address(@0x100), object::id_from_address(@0x200),
             PLAYER_A, 0, 7, 0,
+            90, // duration_seconds
             &test_clock,
             test_scenario::ctx(&mut scenario),
         );

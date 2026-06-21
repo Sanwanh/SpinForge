@@ -21,6 +21,11 @@ interface RoomState {
   creatorRotorName: string | null;
   opponentRotor: string | null;
   opponentRotorName: string | null;
+  // Shared, server-authoritative match timer (epoch ms). A single start/end
+  // pair drives BOTH players' clocks, so the derived duration is identical for
+  // both — there is no "two stopwatches disagree" problem.
+  battleStartedAt: number | null;
+  battleEndedAt: number | null;
   outcome: { winnerId: string; finishType: number; scoreA: number; scoreB: number } | null;
 }
 
@@ -47,6 +52,8 @@ function emptyState(): RoomState {
     creatorRotorName: null,
     opponentRotor: null,
     opponentRotorName: null,
+    battleStartedAt: null,
+    battleEndedAt: null,
     outcome: null,
   };
 }
@@ -73,6 +80,15 @@ function legacyStatus(row: RoomRow, state: RoomState): string {
   }
 }
 
+// Derive the agreed match duration (seconds) from the shared timer. Floored to
+// whole seconds so both players see exactly the same integer. Null until ended.
+function durationSecondsOf(state: RoomState): number | null {
+  if (state.battleStartedAt == null || state.battleEndedAt == null) return null;
+  // Cap at 24h: a longer value means a forgotten timer, and an uncapped value
+  // would overflow the pg `integer` column. 0 ≤ duration ≤ 86400.
+  return Math.min(86400, Math.max(0, Math.floor((state.battleEndedAt - state.battleStartedAt) / 1000)));
+}
+
 // Shape a resolved room into the object the existing UI consumes. Identities are
 // handles; result.winner is the winner's handle.
 function shapeRoom(resolved: ResolvedRoom) {
@@ -91,6 +107,9 @@ function shapeRoom(resolved: ResolvedRoom) {
     opponent: opponentHandle,
     opponentRotor: state.opponentRotor,
     opponentRotorName: state.opponentRotorName,
+    battleStartedAt: state.battleStartedAt,
+    battleEndedAt: state.battleEndedAt,
+    durationSeconds: durationSecondsOf(state),
     status: legacyStatus(row, state),
     result: state.outcome
       ? {
@@ -226,6 +245,51 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
       }
 
+      // Synchronized match timer: either participant starts it once both Beys
+      // are chosen; the single server timestamp drives BOTH clients' clocks.
+      case 'start-battle': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row } = resolved;
+        if (row.creator_id !== me.id && row.opponent_id !== me.id) {
+          return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+        }
+        const state = { ...(row.result ?? emptyState()) };
+        if (!state.creatorRotor || !state.opponentRotor) {
+          return NextResponse.json({ error: 'Both players must choose a Bey first' }, { status: 409 });
+        }
+        // Idempotent: first starter wins; later calls keep the original timestamp.
+        if (state.battleStartedAt == null) {
+          state.battleStartedAt = Date.now();
+          state.battleEndedAt = null;
+          await persistState(row.id, 'active', state);
+        }
+        const fresh = await resolveRoom(body.roomId);
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+      }
+
+      // Either participant stops the shared timer; the single end timestamp
+      // fixes one duration both players will confirm.
+      case 'end-battle': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row } = resolved;
+        if (row.creator_id !== me.id && row.opponent_id !== me.id) {
+          return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+        }
+        const state = { ...(row.result ?? emptyState()) };
+        if (state.battleStartedAt == null) {
+          return NextResponse.json({ error: 'Battle has not started' }, { status: 409 });
+        }
+        // Idempotent: first stopper fixes the duration; later calls keep it.
+        if (state.battleEndedAt == null) {
+          state.battleEndedAt = Date.now();
+          await persistState(row.id, 'active', state);
+        }
+        const fresh = await resolveRoom(body.roomId);
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!) });
+      }
+
       case 'submit-result': {
         const resolved = await resolveRoom(body.roomId);
         if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
@@ -241,13 +305,18 @@ export async function POST(request: NextRequest) {
         if (!winnerId) {
           return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
         }
+        // Bound the proposed values here (the single write into the room): the
+        // confirmer echoes them to /api/submit-result, so out-of-range values
+        // would otherwise deadlock the match at the strict server validator.
+        const ft = Number(body.finishType);
+        const sa = Number(body.scoreA);
+        const sb = Number(body.scoreB);
+        const inRange = (v: number, max: number) => Number.isInteger(v) && v >= 0 && v <= max;
+        if (!inRange(ft, 3) || !inRange(sa, 15) || !inRange(sb, 15)) {
+          return NextResponse.json({ error: 'Invalid result values' }, { status: 400 });
+        }
         const state = { ...(row.result ?? emptyState()) };
-        state.outcome = {
-          winnerId,
-          finishType: Number(body.finishType) || 0,
-          scoreA: Number(body.scoreA) || 0,
-          scoreB: Number(body.scoreB) || 0,
-        };
+        state.outcome = { winnerId, finishType: ft, scoreA: sa, scoreB: sb };
         await persistState(row.id, 'reporting', state);
         const fresh = await resolveRoom(body.roomId);
         return NextResponse.json({ success: true, room: shapeRoom(fresh!) });

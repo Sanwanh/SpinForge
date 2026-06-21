@@ -161,6 +161,7 @@ module spinforge::relay_for_tests {
             rotor_a, rotor_b,
             SUBJECT_A, // winner subject
             3, 7, 5, // finish_type, score_a, score_b
+            180, // duration_seconds
             OP_ID,
             &test_clock,
             test_scenario::ctx(&mut scenario),
@@ -174,6 +175,7 @@ module spinforge::relay_for_tests {
         assert!(battle_record::score_a(&record) == 7);
         assert!(battle_record::score_b(&record) == 5);
         assert!(battle_record::finish_type(&record) == 3);
+        assert!(battle_record::duration_seconds(&record) == 180);
 
         clock::destroy_for_testing(test_clock);
         battle_record::destroy_for_testing(record);

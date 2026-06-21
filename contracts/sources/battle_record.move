@@ -16,6 +16,8 @@ module spinforge::battle_record {
         finish_type: u8,
         score_a: u8,
         score_b: u8,
+        // Match duration in seconds, agreed off-chain by both participants.
+        duration_seconds: u64,
         confirmed_by_a: bool,
         confirmed_by_b: bool,
         committed: bool,
@@ -52,6 +54,7 @@ module spinforge::battle_record {
         finish_type: u8,
         score_a: u8,
         score_b: u8,
+        duration_seconds: u64,
         operation_id: vector<u8>,
     }
 
@@ -69,6 +72,7 @@ module spinforge::battle_record {
         finish_type: u8,
         score_a: u8,
         score_b: u8,
+        duration_seconds: u64,
         clock: &sui::clock::Clock,
         ctx: &mut TxContext,
     ): BattleRecord {
@@ -82,6 +86,7 @@ module spinforge::battle_record {
             finish_type,
             score_a,
             score_b,
+            duration_seconds,
             confirmed_by_a: false,
             confirmed_by_b: false,
             committed: false,
@@ -113,6 +118,7 @@ module spinforge::battle_record {
         finish_type: u8,
         score_a: u8,
         score_b: u8,
+        duration_seconds: u64,
         operation_id: vector<u8>,
         clock: &sui::clock::Clock,
         ctx: &mut TxContext,
@@ -127,6 +133,7 @@ module spinforge::battle_record {
             finish_type,
             score_a,
             score_b,
+            duration_seconds,
             confirmed_by_a: true,
             confirmed_by_b: true,
             committed: true,
@@ -141,6 +148,7 @@ module spinforge::battle_record {
             finish_type,
             score_a,
             score_b,
+            duration_seconds,
             operation_id,
         });
 
@@ -189,6 +197,7 @@ module spinforge::battle_record {
     public fun score_a(record: &BattleRecord): u8 { record.score_a }
     public fun score_b(record: &BattleRecord): u8 { record.score_b }
     public fun finish_type(record: &BattleRecord): u8 { record.finish_type }
+    public fun duration_seconds(record: &BattleRecord): u64 { record.duration_seconds }
 
     #[test_only]
     public fun destroy_for_testing(record: BattleRecord) {

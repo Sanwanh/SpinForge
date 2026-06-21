@@ -22,6 +22,8 @@ const RESULT_REASON = 'submit_result';
 const SUI_CLOCK = '0x6';
 const DEFAULT_SEASON = 'S1';
 
+// The fully-resolved, server-trusted result. Everything here is derived from
+// the room row, never taken verbatim from the request body.
 interface Result {
   roomId: string;
   winnerId: string;
@@ -30,41 +32,64 @@ interface Result {
   scoreB: number;
   rotorA: string;
   rotorB: string;
+  durationSeconds: number;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// What the client is allowed to assert: which room, who won (by SIDE, not id),
+// and the score line. Identity, Beys and duration are NOT trusted from the body.
+interface ResultInput {
+  code: string;
+  winnerSide: 'creator' | 'opponent';
+  finishType: number;
+  scoreA: number;
+  scoreB: number;
+}
+
+const CODE_RE = /^[A-Z0-9]{4,16}$/;
 
 function boundedInt(v: unknown, min: number, max: number): boolean {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 }
 
-// Validate the reported result at the boundary; identity is NOT from the body.
-function parseResult(body: unknown): Result | null {
+function parseInput(body: unknown): ResultInput | null {
   if (!body || typeof body !== 'object') return null;
   const b = body as Record<string, unknown>;
-  const str = (v: unknown) => typeof v === 'string' && v.length > 0;
-  if (typeof b.roomId !== 'string' || !UUID_RE.test(b.roomId)) return null;
-  if (!str(b.winnerId) || !str(b.rotorA) || !str(b.rotorB)) return null;
+  if (typeof b.code !== 'string' || !CODE_RE.test(b.code)) return null;
+  if (b.winnerSide !== 'creator' && b.winnerSide !== 'opponent') return null;
   if (!boundedInt(b.finishType, 0, 3) || !boundedInt(b.scoreA, 0, 15) || !boundedInt(b.scoreB, 0, 15)) {
     return null;
   }
   return {
-    roomId: b.roomId,
-    winnerId: b.winnerId as string,
+    code: b.code,
+    winnerSide: b.winnerSide,
     finishType: b.finishType as number,
     scoreA: b.scoreA as number,
     scoreB: b.scoreB as number,
-    rotorA: b.rotorA as string,
-    rotorB: b.rotorB as string,
   };
 }
+
+type RoomState = {
+  creatorRotor: string | null;
+  opponentRotor: string | null;
+  battleStartedAt: number | null;
+  battleEndedAt: number | null;
+};
 
 type RoomRow = {
   id: string;
   creator_id: string;
   opponent_id: string | null;
   status: string;
+  result: RoomState | null;
 };
+
+// Server-authoritative duration: derived from the single shared timer, so both
+// participants resolve the SAME integer (floored seconds).
+function durationFromRoom(state: RoomState | null): number {
+  if (!state || state.battleStartedAt == null || state.battleEndedAt == null) return 0;
+  // Cap at 24h: bounds the pg `integer` column and a forgotten-timer abuse case.
+  return Math.min(86400, Math.max(0, Math.floor((state.battleEndedAt - state.battleStartedAt) / 1000)));
+}
 
 // Deterministic hash over the canonical (playerA-ordered) result so both
 // participants' submissions must agree byte-for-byte to commit.
@@ -79,6 +104,7 @@ function resultHash(playerAId: string, playerBId: string, r: Result): string {
     scoreB: r.scoreB,
     rotorA: r.rotorA,
     rotorB: r.rotorB,
+    durationSeconds: r.durationSeconds,
   });
   return createHash('sha256').update(canonical).digest('hex');
 }
@@ -97,21 +123,21 @@ export async function POST(request: NextRequest) {
     if ('error' in auth) return auth.error;
     const { user } = auth;
 
-    const result = parseResult(await request.json());
-    if (!result) {
+    const input = parseInput(await request.json());
+    if (!input) {
       return NextResponse.json({ error: 'Invalid result' }, { status: 400 });
     }
 
-    // 1. Resolve the room + its two participants (server-trusted, not from body).
+    // 1. Resolve the room by its shareable code (server-trusted, not from body).
     const rooms = await db.execute<RoomRow>(sql`
-      SELECT id, creator_id, opponent_id, status FROM battle_rooms WHERE id = ${result.roomId} LIMIT 1
+      SELECT id, creator_id, opponent_id, status, result FROM battle_rooms WHERE code = ${input.code} LIMIT 1
     `);
     const room = rooms[0];
     if (!room) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
     if (!room.opponent_id) {
       return NextResponse.json({ error: 'Room has no opponent yet' }, { status: 409 });
     }
-    if (room.status === 'settled' || room.status === 'cancelled') {
+    if (room.status === 'cancelled') {
       return NextResponse.json({ error: 'Room is already closed' }, { status: 409 });
     }
 
@@ -122,11 +148,26 @@ export async function POST(request: NextRequest) {
     if (user.id !== playerAId && user.id !== playerBId) {
       return NextResponse.json({ error: 'You are not a participant in this match' }, { status: 403 });
     }
-    if (result.winnerId !== playerAId && result.winnerId !== playerBId) {
-      return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
-    }
 
-    // 3. Verify each reported Bey is owned by the matching player.
+    // 3. Build the fully server-trusted result: winner from SIDE, Beys + duration
+    //    from the room row. The body never carries identities, Beys or duration.
+    const rotorA = room.result?.creatorRotor ?? null;
+    const rotorB = room.result?.opponentRotor ?? null;
+    if (!rotorA || !rotorB) {
+      return NextResponse.json({ error: 'Both players must choose a Bey first' }, { status: 409 });
+    }
+    const result: Result = {
+      roomId: room.id,
+      winnerId: input.winnerSide === 'creator' ? playerAId : playerBId,
+      finishType: input.finishType,
+      scoreA: input.scoreA,
+      scoreB: input.scoreB,
+      rotorA,
+      rotorB,
+      durationSeconds: durationFromRoom(room.result),
+    };
+
+    // 4. Verify each Bey is owned by the matching player.
     const ownsA = await assertOwns(playerAId, [result.rotorA]);
     const ownsB = await assertOwns(playerBId, [result.rotorB]);
     if (!ownsA || !ownsB) {
@@ -198,6 +239,7 @@ export async function POST(request: NextRequest) {
             tx.pure.u8(result.finishType),
             tx.pure.u8(result.scoreA),
             tx.pure.u8(result.scoreB),
+            tx.pure.u64(result.durationSeconds),
             tx.pure.vector('u8', Array.from(Buffer.from(operationId))),
             tx.object(SUI_CLOCK),
           ],
@@ -221,12 +263,12 @@ export async function POST(request: NextRequest) {
       await dbtx.execute(sql`
         INSERT INTO battles (
           room_id, player_a_id, player_b_id, winner_id,
-          finish_type, score_a, score_b, season,
+          finish_type, score_a, score_b, duration_seconds, season,
           chain_record_id, tx_digest, chain_status, operation_id
         )
         VALUES (
           ${result.roomId}, ${playerAId}, ${playerBId}, ${result.winnerId},
-          ${result.finishType}, ${result.scoreA}, ${result.scoreB}, ${DEFAULT_SEASON},
+          ${result.finishType}, ${result.scoreA}, ${result.scoreB}, ${result.durationSeconds}, ${DEFAULT_SEASON},
           ${recordId}, ${relay.digest}, 'committed', ${operationId}
         )
         ON CONFLICT (chain_record_id) DO NOTHING
