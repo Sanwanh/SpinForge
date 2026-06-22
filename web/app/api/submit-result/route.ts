@@ -114,7 +114,9 @@ export async function POST(request: NextRequest) {
     if (!isSameOrigin(request)) {
       return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
     }
-    const limited = await rateLimited(request, 'submit-result', 30, 3600);
+    // A match makes only a few calls per player (propose + confirm + a final
+    // fetch); 60/h leaves headroom for retries without enabling abuse.
+    const limited = await rateLimited(request, 'submit-result', 60, 3600);
     if (limited) return limited;
     const overBudget = await adminBudgetExceeded('submit-result', 600, 3600);
     if (overBudget) return overBudget;

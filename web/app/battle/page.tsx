@@ -75,6 +75,15 @@ const FINISH_LABELS: Record<number, string> = {
   3: 'Xtreme Finish (3pt)',
 };
 
+// Localized finish-type label. Beyblade X scoring: how the point was won.
+const FINISH_LABELS_ZH: Record<number, string> = {
+  0: '旋轉終結 (1分)',
+  1: '出局終結 (2分)',
+  2: '爆裂終結 (2分)',
+  3: 'Xtreme 終結 (3分)',
+};
+const finishLabel = (ft: number, isZh: boolean) => (isZh ? FINISH_LABELS_ZH[ft] : FINISH_LABELS[ft]);
+
 export default function BattlePage() {
   const { user, isPending } = useGameUser();
   const myId = user?.id ?? null;
@@ -153,7 +162,9 @@ export default function BattlePage() {
     if (data.success) {
       setLastUsedRotor(selectedRotor);
       setRoom(data.room);
-      // Stay on the select/ready screen; the player enters the battle manually.
+      // Both chosen -> go straight into the match screen; the timer still waits
+      // for an explicit "Start Battle" press there.
+      if (bothChose(data.room)) setPhase('battle');
     }
   }, [myId, selectedRotor, roomId, beys, roomApi]);
 
@@ -224,23 +235,30 @@ export default function BattlePage() {
       if (!data.room) return;
       setRoom(data.room);
       if (phase === 'waiting' && data.room.status === 'ready') setPhase('select');
-      // Note: we do NOT auto-advance to 'battle' — the player enters manually
-      // from the ready screen via the "Start Battle" button.
+      if (phase === 'select' && bothChose(data.room)) setPhase('battle');
       if (phase === 'battle' && data.room.battleEndedAt) setPhase('submit');
     }, 3000);
     return () => clearInterval(interval);
   }, [phase, roomId, roomApi]);
 
-  // In the 'confirmed' phase, re-send my confirmation on a timer; it commits the
-  // moment the opponent agrees on the same result (idempotent server-side).
+  // In the 'confirmed' phase, poll the CHEAP room endpoint (not /api/submit-result,
+  // which is rate-limited to 30/h — polling it every 3s would trip "Too many
+  // requests"). When the room flips to settled (the opponent confirmed and the
+  // commit landed), call /api/submit-result exactly once to fetch the record.
   useEffect(() => {
     if (phase !== 'confirmed' || !room) return;
     const side: 'creator' | 'opponent' = winner === room.creator ? 'creator' : 'opponent';
-    const interval = setInterval(() => {
-      commitToChain(side, finishType, scoreA, scoreB);
-    }, 3000);
+    let done = false;
+    const interval = setInterval(async () => {
+      if (done) return;
+      const data = await roomApi({ action: 'get', roomId });
+      if (data?.room?.status === 'confirmed') {
+        done = true;
+        await commitToChain(side, finishType, scoreA, scoreB); // idempotent → recordId + 'done'
+      }
+    }, 4000);
     return () => clearInterval(interval);
-  }, [phase, room, winner, finishType, scoreA, scoreB, commitToChain]);
+  }, [phase, room, roomId, winner, finishType, scoreA, scoreB, roomApi, commitToChain]);
 
   // Tick once a second while the shared timer is running so it counts up live.
   useEffect(() => {
@@ -419,24 +437,8 @@ export default function BattlePage() {
             const myRotorId = room ? (iAmCreator ? room.creatorRotor : room.opponentRotor) : null;
             const myConfirmed = !!myRotorId;
             const opponentConfirmed = !!opponentRotorId;
-            const ready = !!room && bothChose(room);
             return (
               <div style={{ display: 'grid', gap: 16 }}>
-                {/* Both ready — enter the battle screen manually (no auto-start). */}
-                {ready && (
-                  <div className="panel" style={{ padding: 24, textAlign: 'center', border: '1px solid var(--gold)', boxShadow: '0 0 30px rgba(212,175,55,0.15)' }}>
-                    <Corners color="var(--gold)" />
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>⚔️</div>
-                    <div className="t-h3" style={{ marginBottom: 6 }}>{isZh ? '雙方已就緒' : 'Both Players Ready'}</div>
-                    <p className="muted" style={{ fontSize: 13, marginBottom: 18 }}>
-                      {isZh ? '進入比賽畫面後，按「開始比賽」啟動計時。' : 'Enter the match screen, then press “Start Battle” to begin the timer.'}
-                    </p>
-                    <button onClick={() => setPhase('battle')} className="btn btn-primary" style={{ padding: '12px 36px', fontSize: 14 }}>
-                      {isZh ? '開始對戰' : 'Enter Battle'}
-                    </button>
-                  </div>
-                )}
-
                 {/* Opponent status strip */}
                 {(opponentAddress || opponentConfirmed) && (
                   <div
@@ -660,14 +662,21 @@ export default function BattlePage() {
           {phase === 'submit' && (() => {
             const confirmMode = !!room?.result && !iProposed;
             const proposed = room?.result ?? null;
-            const proposedWinnerLabel = proposed
-              ? (proposed.winner === room?.creator ? 'Player A' : 'Player B')
-              : '';
+            // Show real player names (handles) instead of "Player A/B", with a (你)/(You) marker.
+            const youTag = isZh ? '（你）' : ' (You)';
+            const aName = (room?.creator || 'Player A') + (iAmCreator ? youTag : '');
+            const bName = (room?.opponent || 'Player B') + (!iAmCreator ? youTag : '');
+            const proposedWinnerLabel = proposed ? (proposed.winner === room?.creator ? aName : bName) : '';
             return (
               <div className="panel" style={{ padding: 28 }}>
-                <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 16 }}>
-                  {confirmMode ? (isZh ? '確認對手提交的成績' : "Confirm Opponent's Result") : (isZh ? '對戰結果' : 'Battle Result')}
+                <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 6 }}>
+                  {confirmMode ? (isZh ? '確認對手提交的成績' : "Confirm Opponent's Result") : (isZh ? '填寫對戰結果' : 'Battle Result')}
                 </div>
+                <p className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
+                  {confirmMode
+                    ? (isZh ? '對手送出了以下成績，核對無誤後按確認即寫入並上鏈。' : 'Your opponent submitted the result below. Confirm if it is correct to write it on-chain.')
+                    : (isZh ? '選出贏家、這局怎麼分勝負、以及雙方總分，送出後等對手確認。' : 'Pick the winner, how the point was won, and each side’s score, then submit.')}
+                </p>
 
                 {/* Agreed, server-authoritative match duration. */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', marginBottom: 16 }}>
@@ -679,12 +688,9 @@ export default function BattlePage() {
                   <>
                     <div style={{ display: 'grid', gap: 8, marginBottom: 18 }}>
                       <Row label={isZh ? '勝者' : 'Winner'} value={proposedWinnerLabel} />
-                      <Row label={isZh ? '終結方式' : 'Finish Type'} value={FINISH_LABELS[proposed?.finishType ?? 0]} />
-                      <Row label="Score" value={`${proposed?.scoreA ?? 0} - ${proposed?.scoreB ?? 0}`} />
+                      <Row label={isZh ? '終結方式' : 'Finish'} value={finishLabel(proposed?.finishType ?? 0, isZh)} />
+                      <Row label={isZh ? `比分（${aName} / ${bName}）` : `Score (${aName} / ${bName})`} value={`${proposed?.scoreA ?? 0} - ${proposed?.scoreB ?? 0}`} />
                     </div>
-                    <p className="muted" style={{ fontSize: 12, marginBottom: 14 }}>
-                      {isZh ? '確認後雙方成績（含時長）一致即寫入並上鏈。' : 'On confirm, both results (including duration) match and the record is written on-chain.'}
-                    </p>
                     <button onClick={handleConfirmOpponent} disabled={busy} className="btn btn-primary" style={{ width: '100%', padding: '14px 0' }}>
                       {busy ? (isZh ? '確認中…' : 'Confirming…') : (isZh ? '確認成績' : 'Confirm Result')}
                     </button>
@@ -692,36 +698,39 @@ export default function BattlePage() {
                 ) : (
                   <>
                     <div style={{ marginBottom: 16 }}>
-                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '勝者' : 'Winner'}</div>
+                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '勝者（誰贏了這局）' : 'Winner'}</div>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button onClick={() => setWinner(room?.creator ?? '')} className={winner === room?.creator ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
-                          Player A
+                          {aName}
                         </button>
                         <button onClick={() => setWinner(room?.opponent ?? '')} className={winner === room?.opponent ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
-                          Player B
+                          {bName}
                         </button>
                       </div>
                     </div>
 
                     <div style={{ marginBottom: 16 }}>
-                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '終結方式' : 'Finish Type'}</div>
+                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '終結方式（這分怎麼贏的）' : 'Finish Type'}</div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         {[0, 1, 2, 3].map((ft) => (
                           <button key={ft} onClick={() => setFinishType(ft)} className={finishType === ft ? 'btn btn-primary' : 'btn btn-ghost'} style={{ fontSize: 11, padding: '8px 12px' }}>
-                            {FINISH_LABELS[ft]}
+                            {finishLabel(ft, isZh)}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                      <div>
-                        <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Score A</div>
-                        <input type="number" value={scoreA} onChange={(e) => setScoreA(Math.min(15, Math.max(0, Number(e.target.value))))} min={0} max={15} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
-                      </div>
-                      <div>
-                        <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 4 }}>Score B</div>
-                        <input type="number" value={scoreB} onChange={(e) => setScoreB(Math.min(15, Math.max(0, Number(e.target.value))))} min={0} max={15} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
+                    <div style={{ marginBottom: 16 }}>
+                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '比分（雙方總分）' : 'Score'}</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <div className="t-mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 4 }}>{aName}</div>
+                          <input type="number" value={scoreA} onChange={(e) => setScoreA(Math.min(15, Math.max(0, Number(e.target.value))))} min={0} max={15} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
+                        </div>
+                        <div>
+                          <div className="t-mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 4 }}>{bName}</div>
+                          <input type="number" value={scoreB} onChange={(e) => setScoreB(Math.min(15, Math.max(0, Number(e.target.value))))} min={0} max={15} style={{ width: '100%', padding: '8px 12px', borderRadius: 8, background: 'var(--surface-1)', border: '1px solid var(--border)', color: 'var(--text)', fontFamily: 'var(--f-mono)', fontSize: 20, textAlign: 'center' }} />
+                        </div>
                       </div>
                     </div>
 

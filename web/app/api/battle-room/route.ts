@@ -171,7 +171,9 @@ export async function POST(request: NextRequest) {
     if (!isSameOrigin(request)) {
       return NextResponse.json({ error: 'Forbidden origin' }, { status: 403 });
     }
-    const limited = await rateLimited(request, 'battle-room', 120, 3600);
+    // Realtime lobby: clients poll `get` every ~3s, so the cap must accommodate
+    // sustained polling (1800/h ≈ one call every 2s for a full hour).
+    const limited = await rateLimited(request, 'battle-room', 1800, 3600);
     if (limited) return limited;
 
     const guard = await requireGameUser(request.headers);
