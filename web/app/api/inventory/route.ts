@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireGameUser } from '@/lib/server-user';
 import { listInventory } from '@/lib/ownership';
 import { getBeyImages } from '@/lib/bey-image';
+import { getBeyBattleStats, type BeyStats } from '@/lib/bey-stats';
 import { getSuiClient, PLATFORM_CUSTODY } from '@/lib/relay';
 import { isSameOrigin, safeError } from '@/lib/api-guard';
 
@@ -19,6 +20,24 @@ interface InventoryItem {
   content: unknown | null;
   onChainOwned: boolean;
   imageUrl: string | null;
+}
+
+// Overlay DB-derived battle stats onto a Bey's on-chain Move fields (immutably).
+// Non-Bey objects and missing stats pass through unchanged.
+function mergeBeyStats(objectType: string, content: unknown, stats?: BeyStats): unknown {
+  if (objectType !== 'bey' || !stats || !content || typeof content !== 'object') return content;
+  const c = content as { dataType?: string; fields?: Record<string, unknown> };
+  if (c.dataType !== 'moveObject') return content;
+  return {
+    ...c,
+    fields: {
+      ...(c.fields ?? {}),
+      wins: stats.wins,
+      losses: stats.losses,
+      burst_finishes: stats.burstFinishes,
+      xtreme_finishes: stats.xtremeFinishes,
+    },
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -48,9 +67,9 @@ export async function GET(request: NextRequest) {
       if (id) byId.set(id, r);
     }
 
-    // NFT-style photos, only for Beys (parts have none).
+    // NFT-style photos + DB-derived battle stats, only for Beys (parts have none).
     const beyIds = owned.filter((o) => o.objectType === 'bey').map((o) => o.objectId);
-    const images = await getBeyImages(beyIds);
+    const [images, stats] = await Promise.all([getBeyImages(beyIds), getBeyBattleStats(beyIds)]);
 
     const items: InventoryItem[] = owned.map((o) => {
       const resp = byId.get(o.objectId);
@@ -58,12 +77,15 @@ export async function GET(request: NextRequest) {
         resp?.data?.owner && typeof resp.data.owner === 'object' && 'AddressOwner' in resp.data.owner
           ? (resp.data.owner as { AddressOwner: string }).AddressOwner
           : null;
+      // The on-chain Bey fields (wins/losses/finishes) are never updated, so
+      // overlay the authoritative DB-derived record onto the Bey's Move fields.
+      const content = mergeBeyStats(o.objectType, resp?.data?.content ?? null, stats.get(o.objectId));
       return {
         objectId: o.objectId,
         objectType: o.objectType,
         status: o.status,
         parentObjectId: o.parentObjectId,
-        content: resp?.data?.content ?? null,
+        content,
         // Embedded parts are children of a Bey (not directly address-owned), so
         // the custody check only applies to active, directly-owned objects.
         onChainOwned: o.status === 'embedded' ? true : ownerAddr === PLATFORM_CUSTODY,

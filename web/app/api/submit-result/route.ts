@@ -265,12 +265,12 @@ export async function POST(request: NextRequest) {
       await dbtx.execute(sql`
         INSERT INTO battles (
           room_id, player_a_id, player_b_id, winner_id,
-          finish_type, score_a, score_b, duration_seconds, season,
+          finish_type, score_a, score_b, duration_seconds, rotor_a, rotor_b, season,
           chain_record_id, tx_digest, chain_status, operation_id
         )
         VALUES (
           ${result.roomId}, ${playerAId}, ${playerBId}, ${result.winnerId},
-          ${result.finishType}, ${result.scoreA}, ${result.scoreB}, ${result.durationSeconds}, ${DEFAULT_SEASON},
+          ${result.finishType}, ${result.scoreA}, ${result.scoreB}, ${result.durationSeconds}, ${result.rotorA}, ${result.rotorB}, ${DEFAULT_SEASON},
           ${recordId}, ${relay.digest}, 'committed', ${operationId}
         )
         ON CONFLICT (chain_record_id) DO NOTHING

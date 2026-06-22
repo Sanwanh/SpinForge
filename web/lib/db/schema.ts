@@ -274,6 +274,9 @@ export const battles = pgTable('battles', {
   scoreB: integer('score_b').notNull().default(0),
   // Match duration in seconds, agreed by both players (part of the confirm hash).
   durationSeconds: integer('duration_seconds').notNull().default(0),
+  // The Bey object id each side used — lets us derive per-Bey W/L stats.
+  rotorA: text('rotor_a'),
+  rotorB: text('rotor_b'),
   season: text('season'),
   chainRecordId: text('chain_record_id').unique(),
   txDigest: text('tx_digest').unique(),
