@@ -24,9 +24,13 @@ const DEFAULT_SEASON = 'S1';
 
 // The fully-resolved, server-trusted result. Everything here is derived from
 // the room row, never taken verbatim from the request body.
+// 'draw' is a tie: no winner. winnerId is null and the on-chain winner is the
+// zero address (no contract change needed — it is just a sentinel value).
+type WinnerSide = 'creator' | 'opponent' | 'draw';
+
 interface Result {
   roomId: string;
-  winnerId: string;
+  winnerId: string | null;
   finishType: number;
   scoreA: number;
   scoreB: number;
@@ -39,13 +43,15 @@ interface Result {
 // and the score line. Identity, Beys and duration are NOT trusted from the body.
 interface ResultInput {
   code: string;
-  winnerSide: 'creator' | 'opponent';
+  winnerSide: WinnerSide;
   finishType: number;
   scoreA: number;
   scoreB: number;
 }
 
 const CODE_RE = /^[A-Z0-9]{4,16}$/;
+// On-chain sentinel for a draw (no winner address).
+const ZERO_ADDRESS = `0x${'0'.repeat(64)}`;
 
 function boundedInt(v: unknown, min: number, max: number): boolean {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
@@ -55,7 +61,7 @@ function parseInput(body: unknown): ResultInput | null {
   if (!body || typeof body !== 'object') return null;
   const b = body as Record<string, unknown>;
   if (typeof b.code !== 'string' || !CODE_RE.test(b.code)) return null;
-  if (b.winnerSide !== 'creator' && b.winnerSide !== 'opponent') return null;
+  if (b.winnerSide !== 'creator' && b.winnerSide !== 'opponent' && b.winnerSide !== 'draw') return null;
   if (!boundedInt(b.finishType, 0, 3) || !boundedInt(b.scoreA, 0, 15) || !boundedInt(b.scoreB, 0, 15)) {
     return null;
   }
@@ -160,7 +166,7 @@ export async function POST(request: NextRequest) {
     }
     const result: Result = {
       roomId: room.id,
-      winnerId: input.winnerSide === 'creator' ? playerAId : playerBId,
+      winnerId: input.winnerSide === 'draw' ? null : input.winnerSide === 'creator' ? playerAId : playerBId,
       finishType: input.finishType,
       scoreA: input.scoreA,
       scoreB: input.scoreB,
@@ -224,7 +230,8 @@ export async function POST(request: NextRequest) {
 
     const subjectA = chainSubjectFor(playerAId);
     const subjectB = chainSubjectFor(playerBId);
-    const winnerSubject = chainSubjectFor(result.winnerId);
+    // Draw → zero address sentinel (no winner); otherwise the winner's subject.
+    const winnerSubject = result.winnerId ? chainSubjectFor(result.winnerId) : ZERO_ADDRESS;
 
     let relay;
     try {
@@ -280,12 +287,16 @@ export async function POST(request: NextRequest) {
         SET status = 'settled', version = version + 1, updated_at = now()
         WHERE id = ${result.roomId}
       `);
-      await dbtx.execute(leaderboardUpsert(DEFAULT_SEASON, playerAId, result.winnerId === playerAId, result));
-      await dbtx.execute(leaderboardUpsert(DEFAULT_SEASON, playerBId, result.winnerId === playerBId, result));
+      // Draw → both players: no win, no loss, no Elo change.
+      const outcomeFor = (uid: string): Outcome =>
+        result.winnerId == null ? 'draw' : result.winnerId === uid ? 'win' : 'loss';
+      await dbtx.execute(leaderboardUpsert(DEFAULT_SEASON, playerAId, outcomeFor(playerAId), result));
+      await dbtx.execute(leaderboardUpsert(DEFAULT_SEASON, playerBId, outcomeFor(playerBId), result));
     });
 
     // 8. Attribution row for the on-chain record (kind=record_attribution).
-    if (recordId) {
+    //    Draws have no winner to attribute, so skip.
+    if (recordId && result.winnerId) {
       await db.execute(sql`
         INSERT INTO ownership (
           user_id, object_id, object_type, kind, status,
@@ -316,12 +327,15 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// XTREME finish (type 3) increments the xtreme tally; winner +1 win / loser +1 loss.
-function leaderboardUpsert(season: string, userId: string, isWinner: boolean, result: Result) {
-  const winInc = isWinner ? 1 : 0;
-  const lossInc = isWinner ? 0 : 1;
-  const eloDelta = isWinner ? 16 : -16;
-  const xtremeInc = isWinner && result.finishType === 3 ? 1 : 0;
+type Outcome = 'win' | 'loss' | 'draw';
+
+// Win: +1 win, +16 Elo (+xtreme tally on a type-3 finish). Loss: +1 loss, -16.
+// Draw: no win, no loss, no Elo change — the match is recorded but unrated.
+function leaderboardUpsert(season: string, userId: string, outcome: Outcome, result: Result) {
+  const winInc = outcome === 'win' ? 1 : 0;
+  const lossInc = outcome === 'loss' ? 1 : 0;
+  const eloDelta = outcome === 'win' ? 16 : outcome === 'loss' ? -16 : 0;
+  const xtremeInc = outcome === 'win' && result.finishType === 3 ? 1 : 0;
   return sql`
     INSERT INTO leaderboard_entries (season, user_id, elo, wins, losses, xtreme_finishes, updated_at)
     VALUES (${season}, ${userId}, ${1000 + eloDelta}, ${winInc}, ${lossInc}, ${xtremeInc}, now())

@@ -30,7 +30,7 @@ interface RoomData {
   durationSeconds?: number | null;
   youAre?: 'creator' | 'opponent' | null;
   status: string;
-  result: { winner: string; finishType: number; scoreA: number; scoreB: number } | null;
+  result: { winner: string; isDraw?: boolean; finishType: number; scoreA: number; scoreB: number } | null;
 }
 
 // Both players have chosen → advance to the battle/timer screen. Derived from
@@ -119,6 +119,8 @@ export default function BattlePage() {
   const [busy, setBusy] = useState(false);
   // True for the player who proposed the result; the other player confirms it.
   const [iProposed, setIProposed] = useState(false);
+  // True when the reported outcome is a tie (no winner).
+  const [isDraw, setIsDraw] = useState(false);
 
   // Room actions go through the session-authenticated API. Identity comes from
   // the session cookie, so we never send creator/opponent/player/submitter.
@@ -186,7 +188,7 @@ export default function BattlePage() {
   // record commits on-chain only once both have confirmed. Returns true when
   // the on-chain record is committed.
   const commitToChain = useCallback(
-    async (winnerSide: 'creator' | 'opponent', ft: number, sa: number, sb: number): Promise<boolean> => {
+    async (winnerSide: 'creator' | 'opponent' | 'draw', ft: number, sa: number, sb: number): Promise<boolean> => {
       const res = await api('/api/submit-result', {
         code: roomId, winnerSide, finishType: ft, scoreA: sa, scoreB: sb,
       });
@@ -200,27 +202,28 @@ export default function BattlePage() {
 
   // Proposer: broadcast the outcome to the room, then record my confirmation.
   const handleProposeResult = useCallback(async () => {
-    if (!myId || !winner || !room || busy) return;
-    const side: 'creator' | 'opponent' = winner === room.creator ? 'creator' : 'opponent';
+    if (!myId || (!winner && !isDraw) || !room || busy) return;
+    const side: 'creator' | 'opponent' | 'draw' = isDraw ? 'draw' : winner === room.creator ? 'creator' : 'opponent';
     setBusy(true); setError('');
     try {
-      const data = await roomApi({ action: 'submit-result', roomId, winner, finishType, scoreA, scoreB });
+      const data = await roomApi({ action: 'submit-result', roomId, winner: isDraw ? 'draw' : winner, finishType, scoreA, scoreB });
       if (!data.success) { setError(data.error); return; }
       setRoom(data.room);
       setIProposed(true);
       const committed = await commitToChain(side, finishType, scoreA, scoreB);
       if (!committed) setPhase('confirmed');
     } finally { setBusy(false); }
-  }, [myId, winner, room, busy, roomId, finishType, scoreA, scoreB, roomApi, commitToChain]);
+  }, [myId, winner, isDraw, room, busy, roomId, finishType, scoreA, scoreB, roomApi, commitToChain]);
 
   // Confirmer: adopt the proposed result (incl. the shared duration) and confirm.
   const handleConfirmOpponent = useCallback(async () => {
     if (!myId || !room?.result || busy) return;
     const r = room.result;
-    const side: 'creator' | 'opponent' = r.winner === room.creator ? 'creator' : 'opponent';
+    const side: 'creator' | 'opponent' | 'draw' = r.isDraw ? 'draw' : r.winner === room.creator ? 'creator' : 'opponent';
     setBusy(true); setError('');
     try {
-      setWinner(side === 'creator' ? room.creator : (room.opponent ?? ''));
+      if (r.isDraw) { setIsDraw(true); setWinner(''); }
+      else { setIsDraw(false); setWinner(side === 'creator' ? room.creator : (room.opponent ?? '')); }
       setFinishType(r.finishType); setScoreA(r.scoreA); setScoreB(r.scoreB);
       const committed = await commitToChain(side, r.finishType, r.scoreA, r.scoreB);
       if (!committed) setPhase('confirmed');
@@ -247,7 +250,7 @@ export default function BattlePage() {
   // commit landed), call /api/submit-result exactly once to fetch the record.
   useEffect(() => {
     if (phase !== 'confirmed' || !room) return;
-    const side: 'creator' | 'opponent' = winner === room.creator ? 'creator' : 'opponent';
+    const side: 'creator' | 'opponent' | 'draw' = isDraw ? 'draw' : winner === room.creator ? 'creator' : 'opponent';
     let done = false;
     const interval = setInterval(async () => {
       if (done) return;
@@ -258,7 +261,7 @@ export default function BattlePage() {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [phase, room, roomId, winner, finishType, scoreA, scoreB, roomApi, commitToChain]);
+  }, [phase, room, roomId, winner, isDraw, finishType, scoreA, scoreB, roomApi, commitToChain]);
 
   // Tick once a second while the shared timer is running so it counts up live.
   useEffect(() => {
@@ -666,7 +669,11 @@ export default function BattlePage() {
             const youTag = isZh ? '（你）' : ' (You)';
             const aName = (room?.creator || 'Player A') + (iAmCreator ? youTag : '');
             const bName = (room?.opponent || 'Player B') + (!iAmCreator ? youTag : '');
-            const proposedWinnerLabel = proposed ? (proposed.winner === room?.creator ? aName : bName) : '';
+            const proposedWinnerLabel = proposed
+              ? proposed.isDraw
+                ? (isZh ? '平手' : 'Draw')
+                : (proposed.winner === room?.creator ? aName : bName)
+              : '';
             return (
               <div className="panel" style={{ padding: 28 }}>
                 <div className="t-eyebrow" style={{ color: 'var(--gold)', marginBottom: 6 }}>
@@ -700,11 +707,14 @@ export default function BattlePage() {
                     <div style={{ marginBottom: 16 }}>
                       <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '勝者（誰贏了這局）' : 'Winner'}</div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <button onClick={() => setWinner(room?.creator ?? '')} className={winner === room?.creator ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
+                        <button onClick={() => { setWinner(room?.creator ?? ''); setIsDraw(false); }} className={!isDraw && winner === room?.creator ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
                           {aName}
                         </button>
-                        <button onClick={() => setWinner(room?.opponent ?? '')} className={winner === room?.opponent ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
+                        <button onClick={() => { setWinner(room?.opponent ?? ''); setIsDraw(false); }} className={!isDraw && winner === room?.opponent ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
                           {bName}
+                        </button>
+                        <button onClick={() => { setIsDraw(true); setWinner(''); }} className={isDraw ? 'btn btn-primary' : 'btn btn-ghost'} style={{ flex: 1, fontSize: 11, padding: '10px 0' }}>
+                          {isZh ? '平手' : 'Draw'}
                         </button>
                       </div>
                     </div>
@@ -734,7 +744,7 @@ export default function BattlePage() {
                       </div>
                     </div>
 
-                    <button onClick={handleProposeResult} disabled={!winner || busy} className="btn btn-primary" style={{ width: '100%', padding: '14px 0' }}>
+                    <button onClick={handleProposeResult} disabled={(!winner && !isDraw) || busy} className="btn btn-primary" style={{ width: '100%', padding: '14px 0' }}>
                       {busy ? (isZh ? '提交中…' : 'Submitting…') : (isZh ? '提交成績（等待對手確認）' : 'Submit (waiting for opponent to confirm)')}
                     </button>
                   </>
@@ -775,7 +785,7 @@ export default function BattlePage() {
               </div>
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 }}>
                 <a href="/passport" className="btn btn-primary">{isZh ? '查看護照' : 'View Passport'}</a>
-                <button onClick={() => { setPhase('create'); setRoomId(''); setRoom(null); setError(''); setOnChainId(''); setIProposed(false); setWinner(''); setSelectedRotor(''); setFinishType(0); setScoreA(7); setScoreB(0); }} className="btn btn-ghost">
+                <button onClick={() => { setPhase('create'); setRoomId(''); setRoom(null); setError(''); setOnChainId(''); setIProposed(false); setWinner(''); setIsDraw(false); setSelectedRotor(''); setFinishType(0); setScoreA(7); setScoreB(0); }} className="btn btn-ghost">
                   {isZh ? '再來一場' : 'Battle Again'}
                 </button>
               </div>

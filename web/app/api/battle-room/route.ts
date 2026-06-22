@@ -26,7 +26,7 @@ interface RoomState {
   // both — there is no "two stopwatches disagree" problem.
   battleStartedAt: number | null;
   battleEndedAt: number | null;
-  outcome: { winnerId: string; finishType: number; scoreA: number; scoreB: number } | null;
+  outcome: { winnerId: string | null; isDraw?: boolean; finishType: number; scoreA: number; scoreB: number } | null;
 }
 
 interface RoomRow {
@@ -120,6 +120,7 @@ function shapeRoom(resolved: ResolvedRoom, viewerId?: string) {
     result: state.outcome
       ? {
           winner: winnerHandle ?? '',
+          isDraw: !!state.outcome.isDraw,
           finishType: state.outcome.finishType,
           scoreA: state.outcome.scoreA,
           scoreB: state.outcome.scoreB,
@@ -305,13 +306,16 @@ export async function POST(request: NextRequest) {
         if (row.creator_id !== me.id && row.opponent_id !== me.id) {
           return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
         }
-        // winner is a participant handle; resolve it back to a user id.
+        // winner is 'draw' for a tie, or a participant handle resolved to a user id.
+        const isDraw = body.winner === 'draw';
         const winnerHandle = typeof body.winner === 'string' ? body.winner : '';
         let winnerId: string | null = null;
-        if (winnerHandle === creatorHandle) winnerId = row.creator_id;
-        else if (opponentHandle && winnerHandle === opponentHandle) winnerId = row.opponent_id;
-        if (!winnerId) {
-          return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
+        if (!isDraw) {
+          if (winnerHandle === creatorHandle) winnerId = row.creator_id;
+          else if (opponentHandle && winnerHandle === opponentHandle) winnerId = row.opponent_id;
+          if (!winnerId) {
+            return NextResponse.json({ error: 'Winner must be a participant' }, { status: 400 });
+          }
         }
         // Bound the proposed values here (the single write into the room): the
         // confirmer echoes them to /api/submit-result, so out-of-range values
@@ -324,7 +328,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Invalid result values' }, { status: 400 });
         }
         const state = { ...(row.result ?? emptyState()) };
-        state.outcome = { winnerId, finishType: ft, scoreA: sa, scoreB: sb };
+        state.outcome = { winnerId, isDraw, finishType: ft, scoreA: sa, scoreB: sb };
         await persistState(row.id, 'reporting', state);
         const fresh = await resolveRoom(body.roomId);
         return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
