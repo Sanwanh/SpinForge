@@ -153,7 +153,7 @@ export default function BattlePage() {
     if (data.success) {
       setLastUsedRotor(selectedRotor);
       setRoom(data.room);
-      if (bothChose(data.room)) setPhase('battle');
+      // Stay on the select/ready screen; the player enters the battle manually.
     }
   }, [myId, selectedRotor, roomId, beys, roomApi]);
 
@@ -224,7 +224,8 @@ export default function BattlePage() {
       if (!data.room) return;
       setRoom(data.room);
       if (phase === 'waiting' && data.room.status === 'ready') setPhase('select');
-      if (phase === 'select' && bothChose(data.room)) setPhase('battle');
+      // Note: we do NOT auto-advance to 'battle' — the player enters manually
+      // from the ready screen via the "Start Battle" button.
       if (phase === 'battle' && data.room.battleEndedAt) setPhase('submit');
     }, 3000);
     return () => clearInterval(interval);
@@ -418,8 +419,24 @@ export default function BattlePage() {
             const myRotorId = room ? (iAmCreator ? room.creatorRotor : room.opponentRotor) : null;
             const myConfirmed = !!myRotorId;
             const opponentConfirmed = !!opponentRotorId;
+            const ready = !!room && bothChose(room);
             return (
               <div style={{ display: 'grid', gap: 16 }}>
+                {/* Both ready — enter the battle screen manually (no auto-start). */}
+                {ready && (
+                  <div className="panel" style={{ padding: 24, textAlign: 'center', border: '1px solid var(--gold)', boxShadow: '0 0 30px rgba(212,175,55,0.15)' }}>
+                    <Corners color="var(--gold)" />
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>⚔️</div>
+                    <div className="t-h3" style={{ marginBottom: 6 }}>{isZh ? '雙方已就緒' : 'Both Players Ready'}</div>
+                    <p className="muted" style={{ fontSize: 13, marginBottom: 18 }}>
+                      {isZh ? '進入比賽畫面後，按「開始比賽」啟動計時。' : 'Enter the match screen, then press “Start Battle” to begin the timer.'}
+                    </p>
+                    <button onClick={() => setPhase('battle')} className="btn btn-primary" style={{ padding: '12px 36px', fontSize: 14 }}>
+                      {isZh ? '開始對戰' : 'Enter Battle'}
+                    </button>
+                  </div>
+                )}
+
                 {/* Opponent status strip */}
                 {(opponentAddress || opponentConfirmed) && (
                   <div
