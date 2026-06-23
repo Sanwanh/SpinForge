@@ -29,6 +29,10 @@ interface RoomData {
   battleEndedAt?: number | null;
   durationSeconds?: number | null;
   youAre?: 'creator' | 'opponent' | null;
+  rpsMine?: string | null;
+  rpsThrown?: { creator: boolean; opponent: boolean };
+  rpsWinner?: 'creator' | 'opponent' | 'tie' | null;
+  rematchCode?: string | null;
   status: string;
   result: { winner: string; isDraw?: boolean; finishType: number; scoreA: number; scoreB: number } | null;
 }
@@ -183,6 +187,33 @@ export default function BattlePage() {
     else setError(data.error);
   }, [roomId, roomApi]);
 
+  // 猜拳決定站位 — throw / re-throw on a tie.
+  const handleRpsThrow = useCallback(async (choice: 'rock' | 'paper' | 'scissors') => {
+    const data = await roomApi({ action: 'rps-throw', roomId, choice });
+    if (data.success) setRoom(data.room); else setError(data.error);
+  }, [roomId, roomApi]);
+
+  const handleRpsReset = useCallback(async () => {
+    const data = await roomApi({ action: 'rps-reset', roomId });
+    if (data.success) setRoom(data.room); else setError(data.error);
+  }, [roomId, roomApi]);
+
+  // Enter a (re)match room with fresh per-match state.
+  const enterMatch = useCallback((newCode: string, newRoom: RoomData | null) => {
+    setRoomId(newCode);
+    setRoom(newRoom);
+    setIProposed(false); setWinner(''); setIsDraw(false); setSelectedRotor('');
+    setFinishType(0); setScoreA(7); setScoreB(0); setOnChainId(''); setError('');
+    setPhase('select');
+  }, []);
+
+  // 重賽 — start a fresh match with the same opponent.
+  const handleRematch = useCallback(async () => {
+    const data = await roomApi({ action: 'rematch', roomId });
+    if (data.success && data.roomId) enterMatch(data.roomId, data.room);
+    else setError(data.error);
+  }, [roomId, roomApi, enterMatch]);
+
   // Single commit path used by propose, confirm, AND polling. Server reads Beys
   // + duration from the room, so both players' canonical hashes match and the
   // record commits on-chain only once both have confirmed. Returns true when
@@ -262,6 +293,20 @@ export default function BattlePage() {
     }, 4000);
     return () => clearInterval(interval);
   }, [phase, room, roomId, winner, isDraw, finishType, scoreA, scoreB, roomApi, commitToChain]);
+
+  // On the done screen, watch for the opponent starting a rematch and follow it.
+  useEffect(() => {
+    if (phase !== 'done') return;
+    const interval = setInterval(async () => {
+      const data = await roomApi({ action: 'get', roomId });
+      const code = data?.room?.rematchCode;
+      if (code) {
+        const r = await roomApi({ action: 'get', roomId: code });
+        enterMatch(code, r.room ?? null);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [phase, roomId, roomApi, enterMatch]);
 
   // Tick once a second while the shared timer is running so it counts up live.
   useEffect(() => {
@@ -610,7 +655,52 @@ export default function BattlePage() {
                   </div>
                 </div>
 
+                {/* 猜拳決定站位 — must resolve before the timer is available */}
+                {!(room?.rpsWinner === 'creator' || room?.rpsWinner === 'opponent') && (() => {
+                  const tie = room?.rpsWinner === 'tie';
+                  const mine = room?.rpsMine ?? null;
+                  const RPS = [
+                    ['rock', '✊', isZh ? '石頭' : 'Rock'],
+                    ['scissors', '✌️', isZh ? '剪刀' : 'Scissors'],
+                    ['paper', '✋', isZh ? '布' : 'Paper'],
+                  ] as const;
+                  return (
+                    <div className="panel" style={{ padding: 28, textAlign: 'center', border: '1px solid var(--gold)' }}>
+                      <div className="t-h3" style={{ marginBottom: 6 }}>{isZh ? '猜拳決定站位' : 'RPS — decide your side'}</div>
+                      <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+                        {tie ? (isZh ? '平手！再猜一次。' : 'Tie! Throw again.')
+                             : (isZh ? '贏的一方決定戰鬥盤站位（左／右）。' : 'The winner picks the battle-pan side (left / right).')}
+                      </p>
+                      <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 14 }}>
+                        {RPS.map(([c, emoji, label]) => (
+                          <button
+                            key={c}
+                            onClick={() => handleRpsThrow(c)}
+                            className={mine === c ? 'btn btn-primary' : 'btn btn-ghost'}
+                            style={{ fontSize: 24, padding: '14px 18px' }}
+                            title={label}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="t-mono" style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+                        {mine ? (isZh ? '已出拳，等待對手…' : 'Thrown — waiting…') : (isZh ? '選擇你的出拳' : 'Make your throw')}
+                        {'  '}{room?.rpsThrown?.creator ? '●' : '○'}{room?.rpsThrown?.opponent ? '●' : '○'}
+                      </p>
+                      {tie && (
+                        <button onClick={handleRpsReset} className="btn btn-ghost" style={{ marginTop: 12, fontSize: 12 }}>
+                          {isZh ? '重新猜拳' : 'Re-throw'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {(() => {
+                  const rpsDecided = room?.rpsWinner === 'creator' || room?.rpsWinner === 'opponent';
+                  if (!rpsDecided) return null; // RPS gate handled above
+                  const iWonRps = room?.rpsWinner === room?.youAre;
                   const startedAt = room?.battleStartedAt ?? null;
                   const endedAt = room?.battleEndedAt ?? null;
                   const running = !!startedAt && !endedAt;
@@ -622,6 +712,15 @@ export default function BattlePage() {
                       className="panel"
                       style={{ padding: 32, textAlign: 'center', border: '1px solid var(--fire)' }}
                     >
+                      <div className="t-mono" style={{ fontSize: 11, color: 'var(--wood)', marginBottom: 10 }}>
+                        {iWonRps ? (isZh ? '✊ 你贏了猜拳 · 由你選站位' : '✊ You won RPS · you pick the side')
+                                 : (isZh ? '對手贏了猜拳 · 由對手選站位' : 'Opponent won RPS · they pick the side')}
+                      </div>
+                      {!startedAt && (
+                        <div className="t-display" style={{ fontSize: 18, color: 'var(--fire)', marginBottom: 8 }}>
+                          {isZh ? '喊「3、2、1、Go Shoot！」' : 'Call “3, 2, 1, Go Shoot!”'}
+                        </div>
+                      )}
                       <div style={{ fontSize: 48, marginBottom: 8 }}>{running ? '⏱️' : '🔥'}</div>
                       <div className="t-h3" style={{ marginBottom: 8 }}>
                         {!startedAt
@@ -731,7 +830,7 @@ export default function BattlePage() {
                     </div>
 
                     <div style={{ marginBottom: 16 }}>
-                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '比分（雙方總分）' : 'Score'}</div>
+                      <div className="t-eyebrow" style={{ fontSize: 9, marginBottom: 6 }}>{isZh ? '比分 · 先取得 4 分者獲勝' : 'Score · first to 4 points wins'}</div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <div className="t-mono" style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 4 }}>{aName}</div>
@@ -780,11 +879,12 @@ export default function BattlePage() {
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                 <Tag color="var(--gold)">{scoreA} - {scoreB}</Tag>
-                <Tag color="var(--fire)">{FINISH_LABELS[finishType]}</Tag>
+                <Tag color="var(--fire)">{isDraw ? (isZh ? '平手' : 'Draw') : finishLabel(finishType, isZh)}</Tag>
                 <Tag color="var(--wood)">⏱ {fmtDuration(room?.durationSeconds ?? 0)}</Tag>
               </div>
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20 }}>
-                <a href="/passport" className="btn btn-primary">{isZh ? '查看護照' : 'View Passport'}</a>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 20, flexWrap: 'wrap' }}>
+                <button onClick={handleRematch} className="btn btn-primary">{isZh ? '重賽（同對手）' : 'Rematch'}</button>
+                <a href="/passport" className="btn btn-ghost">{isZh ? '查看護照' : 'View Passport'}</a>
                 <button onClick={() => { setPhase('create'); setRoomId(''); setRoom(null); setError(''); setOnChainId(''); setIProposed(false); setWinner(''); setIsDraw(false); setSelectedRotor(''); setFinishType(0); setScoreA(7); setScoreB(0); }} className="btn btn-ghost">
                   {isZh ? '再來一場' : 'Battle Again'}
                 </button>

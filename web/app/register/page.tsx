@@ -10,31 +10,49 @@ import { api } from '@/lib/api-fetch';
 import { uploadBeyPhoto, MAX_BEY_PHOTO_BYTES } from '@/lib/bey-photo-client';
 import { BeyPhotoUpload } from '@/components/shared/BeyPhotoUpload';
 
+// Official Beyblade X Blade catalog (Takara Tomy / Hasbro lines).
 const REAL_BLADES = [
-  'Wizard Rod', 'Phoenix Wing', 'Dran Sword', 'Shark Edge',
-  'Hells Scythe', 'Knight Shield', 'Tyranno Beat', 'Leon Crest',
-  'Viper Tail', 'Rhino Horn', 'Unicorn Sting', 'Cobra',
-  'Dran Buster', 'Roar Knuckle', 'Chain Kerbeus',
+  'Aero Pegasus', 'Bear Scratch', 'Black Shell', 'Cobalt Dragoon', 'Cobalt Drake',
+  'Crimson Garuda', 'Croco Crunch', 'Draciel Shield', 'Dragoon Storm', 'Dran Buster',
+  'Dran Dagger', 'Dran Sword', 'Dranzer Spiral', 'Driger Slash', 'Ghost Circle',
+  'Golem Rock', 'Hells Chain', 'Hells Hammer', 'Hells Scythe', 'Impact Drake',
+  'Knight Lance', 'Knight Mail', 'Knight Shield', 'Leon Claw', 'Leon Crest',
+  'Lightning L-Drago Rapid', 'Lightning L-Drago Upper', 'Mammoth Tusk', 'Phoenix Feather',
+  'Phoenix Rudder', 'Phoenix Wing', 'Ptera Swing', 'Rhino Horn', 'Roar Tyranno',
+  'Samurai Saber', 'Samurai Steel', 'Scorpio Spear', 'Shark Edge', 'Shelter Drake',
+  'Shinobi Knife', 'Shinobi Shadow', 'Silver Wolf', 'Sphinx Cowl', 'Storm Pegasis',
+  'Tricera Press', 'Tyranno Beat', 'Unicorn Sting', 'Victory Valkyrie', 'Viper Tail',
+  'Weiss Tiger', 'Whale Wave', 'Wizard Arrow', 'Wizard Rod', 'Wyvern Gale',
+  'Xeno Xcalibur', 'Yell Kong',
 ];
 
+// Official Bits. category: 0 Attack · 1 Stamina/Balance · 2 Defense · 3 Gear.
 const REAL_BITS = [
-  { name: 'Rush', category: 0 },
-  { name: 'Spike', category: 0 },
-  { name: 'Accel', category: 0 },
-  { name: 'Flat', category: 1 },
-  { name: 'Ball', category: 1 },
-  { name: 'Orb', category: 1 },
-  { name: 'Unite', category: 1 },
-  { name: 'Needle', category: 2 },
-  { name: 'High Needle', category: 2 },
-  { name: 'Cyclone', category: 2 },
-  { name: 'Gear Flat', category: 3 },
-  { name: 'Gear Ball', category: 3 },
-  { name: 'Gear Needle', category: 3 },
+  { name: 'Flat', category: 0 }, { name: 'Low Flat', category: 0 },
+  { name: 'Rush', category: 0 }, { name: 'Low Rush', category: 0 },
+  { name: 'Accel', category: 0 }, { name: 'Rubber Accel', category: 0 },
+  { name: 'Kick', category: 0 }, { name: 'Spike', category: 0 },
+  { name: 'Bound Spike', category: 0 }, { name: 'Cyclone', category: 0 },
+  { name: 'Taper', category: 0 }, { name: 'High Taper', category: 0 },
+  { name: 'Ball', category: 1 }, { name: 'Low Orb', category: 1 },
+  { name: 'Orb', category: 1 }, { name: 'Disc Ball', category: 1 },
+  { name: 'Free Ball', category: 1 }, { name: 'Point', category: 1 },
+  { name: 'Trans Point', category: 1 }, { name: 'Glide', category: 1 },
+  { name: 'Level', category: 1 }, { name: 'Zap', category: 1 },
+  { name: 'Vortex', category: 1 }, { name: 'Unite', category: 1 },
+  { name: 'Quake', category: 1 }, { name: 'Elevate', category: 1 },
+  { name: 'Needle', category: 2 }, { name: 'High Needle', category: 2 },
+  { name: 'Metal Needle', category: 2 }, { name: 'Under Needle', category: 2 },
+  { name: 'Dot', category: 2 }, { name: 'Hexa', category: 2 },
+  { name: 'Wedge', category: 2 },
+  { name: 'Gear Flat', category: 3 }, { name: 'Gear Ball', category: 3 },
+  { name: 'Gear Needle', category: 3 }, { name: 'Gear Point', category: 3 },
+  { name: 'Gear Rush', category: 3 },
 ];
 
-const PRONGS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-const HEIGHTS = [50, 55, 60, 70, 80, 85];
+// Ratchet = prong count + height (mm), e.g. 3-60. Official value sets.
+const PRONGS = [0, 1, 2, 3, 4, 5, 6, 7, 9];
+const HEIGHTS = [55, 60, 70, 80, 85];
 
 interface SpiritBeast {
   id: number;

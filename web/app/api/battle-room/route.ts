@@ -26,7 +26,23 @@ interface RoomState {
   // both — there is no "two stopwatches disagree" problem.
   battleStartedAt: number | null;
   battleEndedAt: number | null;
+  // 猜拳決定站位: each side's rock/paper/scissors throw (null until thrown).
+  rpsCreator: string | null;
+  rpsOpponent: string | null;
+  // 重賽: code of the follow-up room once a rematch is started.
+  rematchCode: string | null;
   outcome: { winnerId: string | null; isDraw?: boolean; finishType: number; scoreA: number; scoreB: number } | null;
+}
+
+type RpsResult = 'creator' | 'opponent' | 'tie' | null;
+const RPS_BEATS: Record<string, string> = { rock: 'scissors', scissors: 'paper', paper: 'rock' };
+
+// Resolve the rock-paper-scissors throw: who decides the battle-pan side.
+function rpsWinner(state: RoomState): RpsResult {
+  const a = state.rpsCreator, b = state.rpsOpponent;
+  if (!a || !b) return null;
+  if (a === b) return 'tie';
+  return RPS_BEATS[a] === b ? 'creator' : 'opponent';
 }
 
 interface RoomRow {
@@ -54,6 +70,9 @@ function emptyState(): RoomState {
     opponentRotorName: null,
     battleStartedAt: null,
     battleEndedAt: null,
+    rpsCreator: null,
+    rpsOpponent: null,
+    rematchCode: null,
     outcome: null,
   };
 }
@@ -116,6 +135,10 @@ function shapeRoom(resolved: ResolvedRoom, viewerId?: string) {
     battleEndedAt: state.battleEndedAt,
     durationSeconds: durationSecondsOf(state),
     youAre,
+    rpsMine: youAre === 'creator' ? state.rpsCreator : youAre === 'opponent' ? state.rpsOpponent : null,
+    rpsThrown: { creator: !!state.rpsCreator, opponent: !!state.rpsOpponent },
+    rpsWinner: rpsWinner(state),
+    rematchCode: state.rematchCode,
     status: legacyStatus(row, state),
     result: state.outcome
       ? {
@@ -254,6 +277,44 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
       }
 
+      // 猜拳決定站位: record this player's rock/paper/scissors throw.
+      case 'rps-throw': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row } = resolved;
+        const isCreator = row.creator_id === me.id;
+        const isOpponent = row.opponent_id === me.id;
+        if (!isCreator && !isOpponent) {
+          return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+        }
+        const choice = body.choice;
+        if (choice !== 'rock' && choice !== 'paper' && choice !== 'scissors') {
+          return NextResponse.json({ error: 'Invalid throw' }, { status: 400 });
+        }
+        const state = { ...(row.result ?? emptyState()) };
+        if (isCreator) state.rpsCreator = choice;
+        else state.rpsOpponent = choice;
+        await persistState(row.id, row.status, state);
+        const fresh = await resolveRoom(body.roomId);
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
+      }
+
+      // On a tie, either player clears both throws so they can re-throw.
+      case 'rps-reset': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row } = resolved;
+        if (row.creator_id !== me.id && row.opponent_id !== me.id) {
+          return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+        }
+        const state = { ...(row.result ?? emptyState()) };
+        state.rpsCreator = null;
+        state.rpsOpponent = null;
+        await persistState(row.id, row.status, state);
+        const fresh = await resolveRoom(body.roomId);
+        return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
+      }
+
       // Synchronized match timer: either participant starts it once both Beys
       // are chosen; the single server timestamp drives BOTH clients' clocks.
       case 'start-battle': {
@@ -348,6 +409,36 @@ export async function POST(request: NextRequest) {
         await persistState(row.id, 'settled', state);
         const fresh = await resolveRoom(body.roomId);
         return NextResponse.json({ success: true, room: shapeRoom(fresh!, me.id) });
+      }
+
+      // 重賽: from a finished match, spin up a fresh room with the SAME two
+      // players (same sides), and stamp the new code on the old room so the
+      // opponent's done screen can auto-follow into the rematch.
+      case 'rematch': {
+        const resolved = await resolveRoom(body.roomId);
+        if (!resolved) return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+        const { row } = resolved;
+        if (row.creator_id !== me.id && row.opponent_id !== me.id) {
+          return NextResponse.json({ error: 'Not a participant' }, { status: 403 });
+        }
+        if (!row.opponent_id) {
+          return NextResponse.json({ error: 'No opponent to rematch' }, { status: 409 });
+        }
+        // Idempotent: if a rematch was already started, return that room.
+        const existing = row.result?.rematchCode ?? null;
+        if (existing) {
+          const r = await resolveRoom(existing);
+          if (r) return NextResponse.json({ success: true, roomId: existing, room: shapeRoom(r, me.id) });
+        }
+        const code = generateCode();
+        await db.execute(sql`
+          INSERT INTO battle_rooms (code, creator_id, opponent_id, status, result)
+          VALUES (${code}, ${row.creator_id}, ${row.opponent_id}, 'active', ${JSON.stringify(emptyState())}::jsonb)
+        `);
+        const state = { ...(row.result ?? emptyState()), rematchCode: code };
+        await persistState(row.id, row.status, state);
+        const fresh = await resolveRoom(code);
+        return NextResponse.json({ success: true, roomId: code, room: shapeRoom(fresh!, me.id) });
       }
 
       case 'get': {
