@@ -10,7 +10,6 @@ export function Footer() {
   const t = useT();
 
   const play = [
-    [t.nav.gacha,      '/packs'],
     [t.nav.battle,     '/battle'],
     [t.nav.forge,      '/forge'],
     [t.nav.tournament, '/tournament'],

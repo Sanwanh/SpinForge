@@ -269,11 +269,6 @@ function coreFeatures(isZh: boolean): FeatureItem[] {
       desc: isZh ? '把你手上的實體陀螺註冊成 Sui 鏈上物件,擁有永久戰績與徽章。' : 'Register your physical top as a Sui object with a permanent battle history.',
     },
     {
-      id: 'packs', k: '鑄', color: 'var(--epic)', href: '/packs',
-      title: isZh ? '開卡包' : 'Open Packs',
-      desc: isZh ? '花 100 SPARK 開一包,抽出 5 個隨機零件(刀刃 / 棘輪 / 軸尖)。' : 'Spend 100 SPARK to open a pack and reveal 5 random parts (Blade / Ratchet / Bit).',
-    },
-    {
       id: 'workshop', k: '鍛', color: 'var(--earth)', href: '/workshop',
       title: isZh ? '組裝工坊' : 'Workshop',
       desc: isZh ? '把刀刃 + 棘輪 + 軸尖組裝成一台可出戰的陀螺。' : 'Combine a Blade + Ratchet + Bit into a battle-ready Bey.',
@@ -466,13 +461,10 @@ function StarterPackBanner({ onClaimed }: { onClaimed: () => void }) {
       >
         <p
           className="t-display"
-          style={{ fontSize: 22, color: 'var(--wood)', margin: '0 0 16px' }}
+          style={{ fontSize: 22, color: 'var(--wood)', margin: 0 }}
         >
           {result}
         </p>
-        <Link href="/packs" className="btn btn-primary">
-          {t.packs.openPack} →
-        </Link>
       </div>
     );
   }
@@ -588,8 +580,8 @@ export default function HomePage() {
 
   const ctas = isAuthenticated ? (
     <>
-      <Link href="/packs" className="btn btn-primary">
-        Open Booster Pack →
+      <Link href="/battle" className="btn btn-primary">
+        Battle Now →
       </Link>
       <Link href="/collection" className="btn btn-ghost">
         View Collection
